@@ -1,0 +1,107 @@
+[build-system]
+build-backend = "hatchling.build"
+requires = [ "hatchling" ]
+
+[project]
+name = "lifsaver"
+version = "0.1.0"
+description = "Force-mount external camera cards stuck in macOS LIFS Disk Utility limbo."
+readme = "README.md"
+keywords = [
+  "camera",
+  "digital-imaging-technician",
+  "disk-arbitration",
+  "dit",
+  "exfat",
+  "fat32",
+  "lifs",
+  "macos",
+  "media-management",
+  "mount",
+  "sd-card",
+  "volumes",
+]
+license = { text = "MIT" }
+authors = [
+  { name = "Luis Gómez Gutiérrez" },
+]
+requires-python = ">=3.11"
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Environment :: Console",
+  "Intended Audience :: End Users/Desktop",
+  "Natural Language :: English",
+  "Operating System :: MacOS",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: System :: Filesystems",
+  "Topic :: Utilities",
+]
+dependencies = [
+  "packaging>=26.2",
+]
+urls.Homepage = "https://github.com/lucuma13/lifsaver"
+scripts.lifsaver = "lifsaver.cli:main"
+
+[dependency-groups]
+dev = [
+  "pre-commit",
+  "pytest",
+  "pytest-cov",
+  "ruff",
+  "taplo",
+  "ty",
+]
+
+[tool.hatch]
+build.targets.wheel.packages = [ "src/lifsaver/" ]
+build.targets.sdist.include = [ "/src/lifsaver/", "/tests/" ]
+build.targets.sdist.exclude = [ "/.github/" ]
+
+[tool.uv]
+managed = true
+
+[tool.ruff]
+line-length = 120
+lint.select = [
+  "A",    # flake8-builtins
+  "ANN",  # flake8-annotations
+  "B",    # flake8-bugbear
+  "BLE",  # flake8-blind-except
+  "C",    # flake8-comprehensions + mccabe
+  "DTZ",  # flake8-datetimez
+  "E",    # pycodestyle errors
+  "F",    # Pyflakes
+  "FLY",  # flynt
+  "FURB", # refurb
+  "I",    # isort
+  "PERF", # Perflint
+  "PGH",  # pygrep-hooks
+  "PIE",  # flake8-pie
+  "PL",   # Pylint
+  "PT",   # flake8-pytest-style
+  "RET",  # flake8-return
+  "RSE",  # flake8-raise
+  "RUF",  # Ruff-specific
+  "S",    # flake8-bandit (security)
+  "SIM",  # flake8-simplify
+  "TC",   # flake8-type-checking
+  "UP",   # pyupgrade
+  "W",    # pycodestyle warnings
+]
+lint.ignore = [
+  "S603", # `subprocess` call: untrusted input — inputs are fixed tools + user CLI paths
+  "S606", # process without a shell — that's the safe, intended pattern (no shell injection)
+  "S607", # partial executable path — relying on $PATH is by design for a local CLI
+]
+lint.per-file-ignores."tests/*" = [
+  "ANN",     # annotations on tests add noise without value
+  "PLR2004", # exact values in assertions are the point
+  "S101",    # asserts are the point of a test
+]
+
+[tool.pytest]
+ini_options.addopts = "--strict-markers --cov=src --cov-branch --cov-report=term-missing --cov-report=xml"
