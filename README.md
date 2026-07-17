@@ -1,48 +1,50 @@
 # lifsaver
 
-![OS](https://img.shields.io/badge/OS-macOS%20%7C%20Windows-lightgrey)
-[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-[![ty](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ty/main/assets/badge/v0.json)](https://github.com/astral-sh/ty)
+![OS](https://img.shields.io/badge/OS-macOS-lightgrey)
 [![CI](https://github.com/lucuma13/lifsaver/actions/workflows/ci.yml/badge.svg)](https://github.com/lucuma13/lifsaver/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/lucuma13/lifsaver/graph/badge.svg?token=88HT6VMLHO)](https://codecov.io/gh/lucuma13/lifsaver)
 
-`lifsaver` addresses a macOS bug on LIFS (Live Image File System) which prevents multiple cards from mounting when they have the name "Untitled". Run it to force mount any card that is found. Please note that whereas this utility has been fully tested, you should use it at your own risk and only if you are confident using terminal commands.
+<img src="docs/images/lifsaver_logo_name.svg" width="100" height="100" align="left" hspace="10"/>
+
+`lifsaver` addresses a macOS bug on LIFS (Live Image File System) which prevents multiple cards from mounting when they have the same name (e.g. "Untitled"). It lives in your menu bar and watches for cards that appear but never mount, when that happens you can force-mount the stalled card with two clicks. Please note that whereas this utility has been fully tested, you should use it at your own risk.
+
+<br clear="left"/>
+
+<p align="center">
+  <img src="docs/images/demo.gif" width="800" alt="lifsaver detects a stalled card, then mounts it from the menu bar with one click"/>
+</p>
 
 ### 🚀 Installation
 
-1. Install the `uv` package manager with the [official installer](https://docs.astral.sh/uv/getting-started/installation/), or:
-* macOS: `brew install uv`
-* Windows: `winget install astral-sh.uv`
-* Linux (Debian): `apt-get install uv`
-<!--
-* Linux (RHEL): `yum install uv`
-* Linux (SUSE): `zypper install python-uv`
-* Linux (Arch): `pacman -S muv`
--->
-
-2. Install the toolkit:
+Download the latest [installer](https://github.com/lucuma13/lifsaver/releases/latest/download/lifsaver_installer_macos.pkg). Or simply:
 
 ```
-uv tool install lifsaver
+brew install --cask lucuma13/dit/lifsaver
 ```
 
-3. Test the installation (if the command is not recognised try `uv tool update-shell` and restart your terminal):
-
-```
-lifsaver --version
-```
-
-#### Alternative (macOS only)
-
-Install with [Homebrew](https://brew.sh/): `brew install lucuma13/dit/mhl-suite`
-
+The installer is not notarized – macOS will warn on first open: right-click the .pkg → Open, or allow it under System Settings → Privacy & Security.
 
 ### 📖 Usage
 
-`lifsaver` first scans and reports how many stalled volumes it found (read-only and needs no privileges), then requires `sudo` to mount them. Run in any terminal:
+**Menu bar app**. The app watches disk activity and flags any volume that appeared but never mounted:
+
+- The app icon turns orange and a *"Stalled volume detected"* notification appears. Click it, enter your administrator password in the standard macOS dialog, and the cards appear in Finder.
+- The menu shows the same state at any time: *"Mount 2 stalled volumes"* when cards are stuck, *"No stalled volumes detected"* otherwise.
+
+**CLI** — same engine, same safety interlocks:
 
 ```bash
-lifsaver
+lifsaver            # scan (read-only), confirm, then mount via sudo
+lifsaver --verbose  # show the full mount sequence and raw mount errors
 ```
+
+### 🐞 Reporting bugs
+
+If `lifsaver` misses a stalled card or fails to mount one, please send a diagnostic report:
+
+- **Menu bar app** — choose *Save Diagnostic Report…* from the menu, optionally describe what happened, save the file, then click *Email Report* and send it to me (or open a [GitHub issue](https://github.com/lucuma13/lifsaver/issues/new)).
+- **CLI** — run `lifsaver report`; it saves the report to your `~/Downloads` folder, then email it to me (or open a [GitHub issue](https://github.com/lucuma13/lifsaver/issues/new)).
+
 
 ### ⚠️ Disclaimer
 

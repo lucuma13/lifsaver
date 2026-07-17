@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Monochrome macOS menu-bar template icon for lifsaver.
+       Single-colour black + alpha; no background, gradients or text so the
+       system tints it for light/dark bars and the selected state. Geometry is
+       taken from lifsaver_logo.svg (same directory): the four long arc segments are
+       the solid ink, the two diagonal cross-bands are open (delimited by the
+       two concentric perimeter rings, r=400 / r=196), the centre hole is open
+       and the exact scalloped-rope path traces the outside.
+       Set isTemplate = true on the NSImage that renders it. -->
+  <mask id="buoy">
+    <!-- White = opaque. Annulus (outer r=400, inner r=196) = the ring body. -->
+    <path fill="#fff" fill-rule="evenodd"
+          d="M112.0,512.0 a400.0,400.0 0 1,0 800.0,0 a400.0,400.0 0 1,0 -800.0,0 Z M316.0,512.0 a196.0,196.0 0 1,0 392.0,0 a196.0,196.0 0 1,0 -392.0,0 Z"/>
+    <!-- Black bands carve the four diagonal gaps (thickened from 110 to 140). -->
+    <rect x="112.0" y="442.0" width="800.0" height="140.0" fill="#000" transform="rotate(45 512 512)"/>
+    <rect x="112.0" y="442.0" width="800.0" height="140.0" fill="#000" transform="rotate(-45 512 512)"/>
+  </mask>
+
+  <!-- Solid buoy body (the four long arc segments) with the cross-bands open. -->
+  <rect width="1024" height="1024" fill="#000" mask="url(#buoy)"/>
+
+  <!-- Two concentric rings delimiting the buoy's outer and inner perimeter;
+       drawn as full circles so they bridge the open bands all the way round. -->
+  <circle cx="512" cy="512" r="400.0" fill="none" stroke="#000" stroke-width="25"/>
+  <circle cx="512" cy="512" r="196.0" fill="none" stroke="#000" stroke-width="25"/>
+
+  <!-- The exact scalloped rope path from the logo, as a thin stroke. -->
+  <path d="M795.5,795.5 C758.2,832.9 717.7,874.4 670.4,894.5 C623.2,914.6 564.8,916.0 512.0,916.0 C459.2,916.0 400.8,914.6 353.6,894.5 C306.3,874.4 265.8,832.9 228.5,795.5 C191.1,758.2 149.6,717.7 129.5,670.4 C109.4,623.2 108.0,564.8 108.0,512.0 C108.0,459.2 109.4,400.8 129.5,353.6 C149.6,306.3 191.1,265.8 228.5,228.5 C265.8,191.1 306.3,149.6 353.6,129.5 C400.8,109.4 459.2,108.0 512.0,108.0 C564.8,108.0 623.2,109.4 670.4,129.5 C717.7,149.6 758.2,191.1 795.5,228.5 C832.9,265.8 874.4,306.3 894.5,353.6 C914.6,400.8 916.0,459.2 916.0,512.0 C916.0,564.8 914.6,623.2 894.5,670.4 C874.4,717.7 832.9,758.2 795.5,795.5 Z"
+        fill="none" stroke="#000" stroke-width="10" stroke-linejoin="round"/>
+</svg>

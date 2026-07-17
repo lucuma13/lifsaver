@@ -1,0 +1,134 @@
+---
+name: Publish
+run-name: Publish version ${{ github.ref_name }}
+"on":
+  release:
+    types: [published]
+concurrency:
+  group: publish
+  cancel-in-progress: true
+permissions: {} # deny all by default; each job grants only what it needs
+jobs:
+  # JOB 0: Run the full CI suite as a safety gate for every channel
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+  # JOB 1: Build the universal artifacts and attach them to the release
+  build-and-upload:
+    name: Build artifacts and upload to release
+    needs: [ci]
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.upload.outputs.version }}
+      zip-sha256: ${{ steps.upload.outputs.zip-sha256 }}
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - name: Verify release tag matches Version.swift
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="$(./scripts/version.sh)"
+          if [ "v$VERSION" != "$TAG" ]; then
+            echo "ERROR: tag $TAG does not match Version.swift ($VERSION)" >&2
+            exit 1
+          fi
+      - name: Build universal release binaries
+        run: ./scripts/release/build.sh
+      - name: Assemble app bundle
+        run: ./scripts/release/bundle_app.sh
+      - name: Package pkg and zip
+        run: ./scripts/release/make_pkg.sh
+      - name: Upload artifacts to the release
+        id: upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="${TAG#v}"
+          gh release upload "$TAG" \
+            "dist/lifsaver_installer_macos.pkg" \
+            "dist/lifsaver-$VERSION-macos-universal.zip"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "zip-sha256=$(shasum -a 256 "dist/lifsaver-$VERSION-macos-universal.zip" | cut -d' ' -f1)" \
+            >> "$GITHUB_OUTPUT"
+  # JOB 2: Render the cask from its template and push it to the tap
+  publish-homebrew:
+    name: Render and push Homebrew cask
+    needs: [build-and-upload]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    environment:
+      name: homebrew
+      url: https://github.com/lucuma13/homebrew-dit
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          persist-credentials: false
+      - name: Checkout homebrew-dit tap
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          repository: lucuma13/homebrew-dit
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-dit
+          persist-credentials: false
+      - name: Render cask from template
+        env:
+          VERSION: ${{ needs.build-and-upload.outputs.version }}
+          ZIP_SHA256: ${{ needs.build-and-upload.outputs.zip-sha256 }}
+        run: |
+          sed -e "s/__VERSION__/$VERSION/g" \
+              -e "s/__SHA256__/$ZIP_SHA256/g" \
+              scripts/release/templates/template_lifsaver.rb > homebrew-dit/Casks/lifsaver.rb
+      - name: Commit and push cask
+        working-directory: homebrew-dit
+        env:
+          TAG: ${{ github.ref_name }}
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/lifsaver.rb
+          if git diff --cached --quiet; then
+            echo "Cask unchanged; nothing to push."
+            exit 0
+          fi
+          git commit -m "lifsaver ${TAG}"
+          git push "https://x-access-token:${TAP_TOKEN}@github.com/lucuma13/homebrew-dit" HEAD:main
+  # JOB 3: Post-deployment smoke test (install the pushed cask from the tap)
+  # on every supported macOS line. The label list is defined once, in ci.yml's
+  # macos-runners job, and consumed here via the reusable workflow's output.
+  verify-brew-install:
+    name: Verify brew install (${{ matrix.os }})
+    needs: [ci, build-and-upload, publish-homebrew]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(needs.ci.outputs.macos-runners) }}
+    runs-on: ${{ matrix.os }}
+    permissions: {}
+    steps:
+      - name: Install cask from tap
+        run: |
+          brew tap lucuma13/dit
+          brew install --cask lucuma13/dit/lifsaver
+      - name: Smoke test CLI and app bundle
+        env:
+          VERSION: ${{ needs.build-and-upload.outputs.version }}
+        run: |
+          echo "→ lifsaver --version"
+          INSTALLED="$(lifsaver --version)"
+          if [ "$INSTALLED" != "$VERSION" ]; then
+            echo "ERROR: installed CLI reports $INSTALLED, expected $VERSION" >&2
+            exit 1
+          fi
+          test -d /Applications/Lifsaver.app
+          /usr/bin/codesign --verify --strict /Applications/Lifsaver.app

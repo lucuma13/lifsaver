@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="1">
+    <title>lifsaver v__VERSION__</title>
+    <options customize="never" require-scripts="false" hostArchitectures="arm64,x86_64"/>
+    <!-- resources/background.png is scripts/render/assets/lifsaver_logo.svg composited
+         bottom-left on a 1240x836 (620x418 @2x) transparent canvas, so it
+         scales crisply and shows over Installer's light or dark pane. The
+         resources dir is passed to productbuild. The date flags strip the wall
+         clock (see scripts/render/icons.sh) so identical artwork stays byte-identical.
+         Regenerate with:
+           rsvg-convert -w 260 -h 260 scripts/render/assets/lifsaver_logo.svg -o logo.png
+           magick -size 1240x836 xc:none logo.png -gravity SouthWest \
+             -geometry +52+110 -composite \
+             +set date:create +set date:modify +set date:timestamp \
+             -define png:exclude-chunk=tIME \
+             scripts/release/installer-resources/background.png -->
+    <background file="background.png" alignment="bottomleft" scaling="tofit"/>
+    <background-darkAqua file="background.png" alignment="bottomleft" scaling="tofit"/>
+    <domains enable_localSystem="true"/>
+    <choices-outline>
+        <line choice="default">
+            <line choice="com.lucuma13.lifsaver"/>
+        </line>
+    </choices-outline>
+    <choice id="default"/>
+    <choice id="com.lucuma13.lifsaver" visible="false">
+        <pkg-ref id="com.lucuma13.lifsaver"/>
+    </choice>
+    <pkg-ref id="com.lucuma13.lifsaver" version="__VERSION__" onConclusion="none">lifsaver-component.pkg</pkg-ref>
+</installer-gui-script>
