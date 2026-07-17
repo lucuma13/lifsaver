@@ -4,15 +4,13 @@
 [![CI](https://github.com/lucuma13/lifsaver/actions/workflows/ci.yml/badge.svg)](https://github.com/lucuma13/lifsaver/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/lucuma13/lifsaver/graph/badge.svg?token=88HT6VMLHO)](https://codecov.io/gh/lucuma13/lifsaver)
 
-<img src="docs/images/lifsaver_logo_name.svg" width="100" height="100" align="left" hspace="10"/>
+<img src="docs/images/lifsaver_logo_name.svg" width="110" align="left" hspace="10"/>
 
 `lifsaver` addresses a macOS bug on LIFS (Live Image File System) which prevents multiple cards from mounting when they have the same name (e.g. "Untitled"). It lives in your menu bar and watches for cards that appear but never mount, when that happens you can force-mount the stalled card with two clicks. Please note that whereas this utility has been fully tested, you should use it at your own risk.
 
 <br clear="left"/>
 
-<p align="center">
-  <img src="docs/images/demo.gif" width="800" alt="lifsaver detects a stalled card, then mounts it from the menu bar with one click"/>
-</p>
+<img src="docs/images/demo.gif" width="100%"/>
 
 ### 🚀 Installation
 
