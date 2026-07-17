@@ -3,18 +3,16 @@
 # .swiftlint.yml: unused_import, unused_declaration, …) over Sources. These
 # rules need every module's full compiler invocation, which
 # llbuild_to_compile_commands.py recovers from SwiftPM's internal build
-# manifest — so a debug build must exist and be current (`swift build`,
-# `swift build --build-tests`, and `swift test` all produce one). If the
-# manifest is missing, a plain debug build is run first; if it is merely
-# stale, analysis sees the old file list, so build before analyzing.
-# Not a pre-commit hook on purpose: it needs a full build.
+# manifest — so a debug build is run first to keep it current (a stale
+# manifest would hand analysis an old file list; when nothing changed the
+# build is a ~0.3s no-op).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 MANIFEST="$ROOT/.build/debug.yaml"
 DB="$ROOT/.build/compile_commands.json"
 
-[ -f "$MANIFEST" ] || (cd "$ROOT" && swift build)
+(cd "$ROOT" && swift build)
 python3 "$ROOT/scripts/lint/llbuild_to_compile_commands.py" "$MANIFEST" "$DB"
 cd "$ROOT"
 swiftlint analyze --strict --quiet --compile-commands "$DB" Sources

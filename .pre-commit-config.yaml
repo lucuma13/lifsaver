@@ -69,6 +69,12 @@ repos:
         language: system
         types: [swift]
         pass_filenames: false
+      - id: swiftlint-analyze
+        name: swiftlint analyze
+        entry: scripts/lint/analyze.sh
+        language: system
+        types: [swift]
+        pass_filenames: false
   # Bash formatter
   - repo: https://github.com/scop/pre-commit-shfmt
     rev: v3.13.1-1
