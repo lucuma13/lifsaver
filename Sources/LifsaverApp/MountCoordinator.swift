@@ -1,4 +1,3 @@
-import Foundation
 import LifsaverCore
 
 /// Mounts stalled volumes in two passes, so the password dialog only appears
