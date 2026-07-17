@@ -1,0 +1,234 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   viewBox="0 0 1024 1024"
+   width="1024"
+   height="1024"
+   version="1.1"
+   id="svg18"
+   sodipodi:docname="logo_name.svg"
+   inkscape:version="1.4.4 (dcaf3e7, 2026-05-05)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview18"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="0.6829002"
+     inkscape:cx="615.75616"
+     inkscape:cy="422.4629"
+     inkscape:window-width="944"
+     inkscape:window-height="1056"
+     inkscape:window-x="0"
+     inkscape:window-y="33"
+     inkscape:window-maximized="0"
+     inkscape:current-layer="svg18" />
+  <defs
+     id="defs11">
+    <linearGradient
+       id="bg"
+       x1="0"
+       y1="0"
+       x2="0"
+       y2="1">
+      <stop
+         offset="0"
+         stop-color="#BEE6F9"
+         id="stop1" />
+      <stop
+         offset="1"
+         stop-color="#57ABD8"
+         id="stop2" />
+    </linearGradient>
+    <linearGradient
+       id="ringFlat"
+       x1="0"
+       y1="0"
+       x2="0"
+       y2="1">
+      <stop
+         offset="0"
+         stop-color="#FF8A4C"
+         id="stop3" />
+      <stop
+         offset="1"
+         stop-color="#F15A2B"
+         id="stop4" />
+    </linearGradient>
+    <radialGradient
+       id="ringVol"
+       cx="512"
+       cy="512"
+       r="400.0"
+       gradientUnits="userSpaceOnUse">
+      <stop
+         offset="0.490"
+         stop-color="#DA4F1E"
+         id="stop5" />
+      <stop
+         offset="0.62"
+         stop-color="#FB7A3E"
+         id="stop6" />
+      <stop
+         offset="0.745"
+         stop-color="#FF9A5C"
+         id="stop7" />
+      <stop
+         offset="0.88"
+         stop-color="#EF6230"
+         id="stop8" />
+      <stop
+         offset="1"
+         stop-color="#D3451A"
+         id="stop9" />
+    </radialGradient>
+    <linearGradient
+       id="hole"
+       x1="0"
+       y1="0"
+       x2="0"
+       y2="1">
+      <stop
+         offset="0"
+         stop-color="#CBEBFB"
+         id="stop10" />
+      <stop
+         offset="1"
+         stop-color="#8FCEEC"
+         id="stop11" />
+    </linearGradient>
+    <path
+       id="ann"
+       fill-rule="evenodd"
+       clip-rule="evenodd"
+       d="M112.0,512.0 a400.0,400.0 0 1,0 800.0,0 a400.0,400.0 0 1,0 -800.0,0 Z M316.0,512.0 a196.0,196.0 0 1,0 392.0,0 a196.0,196.0 0 1,0 -392.0,0 Z" />
+    <clipPath
+       id="clip">
+      <use
+         href="#ann"
+         id="use11" />
+    </clipPath>
+  </defs>
+  <rect
+     width="1024"
+     height="1024"
+     rx="230"
+     fill="url(#bg)"
+     id="rect11" />
+  <circle
+     cx="512"
+     cy="512"
+     r="196.0"
+     fill="url(#hole)"
+     id="circle11" />
+  <path
+     d="M795.5,795.5 C758.2,832.9 717.7,874.4 670.4,894.5 C623.2,914.6 564.8,916.0 512.0,916.0 C459.2,916.0 400.8,914.6 353.6,894.5 C306.3,874.4 265.8,832.9 228.5,795.5 C191.1,758.2 149.6,717.7 129.5,670.4 C109.4,623.2 108.0,564.8 108.0,512.0 C108.0,459.2 109.4,400.8 129.5,353.6 C149.6,306.3 191.1,265.8 228.5,228.5 C265.8,191.1 306.3,149.6 353.6,129.5 C400.8,109.4 459.2,108.0 512.0,108.0 C564.8,108.0 623.2,109.4 670.4,129.5 C717.7,149.6 758.2,191.1 795.5,228.5 C832.9,265.8 874.4,306.3 894.5,353.6 C914.6,400.8 916.0,459.2 916.0,512.0 C916.0,564.8 914.6,623.2 894.5,670.4 C874.4,717.7 832.9,758.2 795.5,795.5 Z"
+     fill="none"
+     stroke="#2F5D74"
+     stroke-opacity="0.9"
+     stroke-width="11"
+     stroke-linejoin="round"
+     id="path11" />
+  <path
+     d="M795.5,795.5 C758.2,832.9 717.7,874.4 670.4,894.5 C623.2,914.6 564.8,916.0 512.0,916.0 C459.2,916.0 400.8,914.6 353.6,894.5 C306.3,874.4 265.8,832.9 228.5,795.5 C191.1,758.2 149.6,717.7 129.5,670.4 C109.4,623.2 108.0,564.8 108.0,512.0 C108.0,459.2 109.4,400.8 129.5,353.6 C149.6,306.3 191.1,265.8 228.5,228.5 C265.8,191.1 306.3,149.6 353.6,129.5 C400.8,109.4 459.2,108.0 512.0,108.0 C564.8,108.0 623.2,109.4 670.4,129.5 C717.7,149.6 758.2,191.1 795.5,228.5 C832.9,265.8 874.4,306.3 894.5,353.6 C914.6,400.8 916.0,459.2 916.0,512.0 C916.0,564.8 914.6,623.2 894.5,670.4 C874.4,717.7 832.9,758.2 795.5,795.5 Z"
+     fill="none"
+     stroke="#EFE3C6"
+     stroke-width="6"
+     stroke-linejoin="round"
+     id="path12" />
+  <use
+     href="#ann"
+     fill="url(#ringFlat)"
+     id="use12" />
+  <g
+     clip-path="url(#clip)"
+     fill="#FFFFFF"
+     id="g13">
+    <rect
+       x="112.0"
+       y="457.0"
+       width="800.0"
+       height="110.0"
+       transform="rotate(45 512 512)"
+       id="rect12" />
+    <rect
+       x="112.0"
+       y="457.0"
+       width="800.0"
+       height="110.0"
+       transform="rotate(-45 512 512)"
+       id="rect13" />
+  </g>
+  <rect
+     x="790.6"
+     y="760.1"
+     width="17"
+     height="78"
+     rx="8"
+     transform="rotate(45 799.1 799.1)"
+     fill="#FFFFFF"
+     stroke="#2F5D74"
+     stroke-opacity="0.9"
+     stroke-width="2.5"
+     id="rect14" />
+  <rect
+     x="216.4"
+     y="760.1"
+     width="17"
+     height="78"
+     rx="8"
+     transform="rotate(135 224.9 799.1)"
+     fill="#FFFFFF"
+     stroke="#2F5D74"
+     stroke-opacity="0.9"
+     stroke-width="2.5"
+     id="rect15" />
+  <rect
+     x="216.4"
+     y="185.9"
+     width="17"
+     height="78"
+     rx="8"
+     transform="rotate(225 224.9 224.9)"
+     fill="#FFFFFF"
+     stroke="#2F5D74"
+     stroke-opacity="0.9"
+     stroke-width="2.5"
+     id="rect16" />
+  <rect
+     x="790.6"
+     y="185.9"
+     width="17"
+     height="78"
+     rx="8"
+     transform="rotate(315 799.1 224.9)"
+     fill="#FFFFFF"
+     stroke="#2F5D74"
+     stroke-opacity="0.9"
+     stroke-width="2.5"
+     id="rect17" />
+  <circle
+     cx="512"
+     cy="512"
+     r="400.0"
+     fill="none"
+     stroke="#1F5E82"
+     stroke-opacity="0.28"
+     stroke-width="4"
+     id="circle17" />
+  <circle
+     cx="512"
+     cy="512"
+     r="196.0"
+     fill="none"
+     stroke="#1F5E82"
+     stroke-opacity="0.22"
+     stroke-width="4"
+     id="circle18" />
+</svg>

@@ -1,0 +1,49 @@
+---
+included:
+  - Package.swift
+  - Sources
+  - Tests
+line_length:
+  warning: 120
+  ignores_urls: true
+identifier_name:
+  excluded: [ok, fs] # mount-outcome case/counters; filesystem-type local
+disabled_rules:
+  # swift-format owns comma style and inserts trailing commas in multiline literals
+  - trailing_comma
+  # subprocess output (diskutil, mount) is decoded lossily on purpose:
+  # invalid UTF-8 in tool output must never abort the pipeline
+  - optional_data_string_conversion
+# type-aware rules for `swiftlint analyze` (needs a compilation database;
+# see scripts/lint/analyze.sh) — ignored by plain `swiftlint lint`
+analyzer_rules:
+  - capture_variable
+  - typesafe_array_init
+  - unused_declaration
+  - unused_import
+opt_in_rules:
+  - contains_over_filter_count
+  - contains_over_filter_is_empty
+  - contains_over_first_not_nil
+  - contains_over_range_nil_comparison
+  - empty_count
+  - empty_string
+  - fatal_error_message
+  - first_where
+  - force_unwrapping
+  - identical_operands
+  - implicitly_unwrapped_optional
+  - joined_default_parameter
+  - last_where
+  - legacy_multiple
+  - overridden_super_call
+  - prohibited_super_call
+  - reduce_into
+  - redundant_nil_coalescing
+  - sorted_first_last
+  - toggle_bool
+  - unhandled_throwing_task
+  - unneeded_parentheses_in_closure_argument
+  - unowned_variable_capture
+  - weak_delegate
+  - yoda_condition

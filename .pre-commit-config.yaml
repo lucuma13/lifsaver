@@ -19,7 +19,6 @@ repos:
         exclude: \.md$
       - id: check-executables-have-shebangs
       - id: check-shebang-scripts-are-executable
-      - id: debug-statements
   # Spellcheck
   - repo: https://github.com/crate-ci/typos
     rev: v1.48.0
@@ -51,51 +50,33 @@ repos:
     rev: v1.26.1
     hooks:
       - id: zizmor
-  # Pyproject formatter
-  - repo: https://github.com/tox-dev/pyproject-fmt
-    rev: v2.25.1
-    hooks:
-      - id: pyproject-fmt
-  # Pyproject validator
-  - repo: https://github.com/abravalheri/validate-pyproject
-    rev: v0.25
-    hooks:
-      - id: validate-pyproject
-  # keep uv.lock in sync with pyproject.toml & Dependency security auditing
-  - repo: https://github.com/astral-sh/uv-pre-commit
-    rev: 0.11.27
-    hooks:
-      - id: uv-lock
-      - id: uv-audit
-        args: ["--preview-features", "audit-command"]
-  # TOML formatter and linter (excluding pyproject.toml)
+  # Swift formatter and linter
   - repo: local
     hooks:
-      - id: taplo-fmt
-        name: taplo-fmt
-        entry: uv run taplo fmt
+      - id: swift-format
+        name: swift-format
+        entry: swift format format --in-place --parallel
         language: system
-        types: [toml]
-        exclude: ^pyproject\.toml$
-      - id: taplo-lint
-        name: taplo-lint
-        entry: uv run taplo lint
+        types: [swift]
+      - id: swift-format-lint
+        name: swift-format lint
+        entry: swift format lint --strict --parallel
         language: system
-        types: [toml]
-        exclude: ^pyproject\.toml$
-  # Python formatter and linter (linter with --fix before formatter)
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.20
-    hooks:
-      - id: ruff-check
-        args: ["--fix"]
-      - id: ruff-format
-  # Python type checker
-  - repo: local
-    hooks:
-      - id: ty-check
-        name: ty check
-        entry: uv run ty check
+        types: [swift]
+      - id: swiftlint
+        name: swiftlint
+        entry: swiftlint lint --strict --quiet
         language: system
+        types: [swift]
         pass_filenames: false
-        always_run: true
+  # Bash formatter
+  - repo: https://github.com/scop/pre-commit-shfmt
+    rev: v3.13.1-1
+    hooks:
+      - id: shfmt
+  # Bash linter
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1
+    hooks:
+      - id: shellcheck
+        exclude_types: [bats]

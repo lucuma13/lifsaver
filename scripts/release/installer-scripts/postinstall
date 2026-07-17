@@ -1,0 +1,5 @@
+#!/bin/sh
+# Expose the bundled CLI on PATH.
+mkdir -p /usr/local/bin
+ln -sf "/Applications/Lifsaver.app/Contents/Helpers/lifsaver" /usr/local/bin/lifsaver
+exit 0
