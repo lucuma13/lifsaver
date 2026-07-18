@@ -38,7 +38,7 @@ public struct DiagnosticsReporter: Sendable {
     private let runner: any ProcessRunning
     private let mountTable: any MountTableReading
 
-    public init(runner: any ProcessRunning, mountTable: any MountTableReading = LiveMountTable()) {
+    public init(runner: any ProcessRunning, mountTable: any MountTableReading = KernelMountTable()) {
         self.runner = runner
         self.mountTable = mountTable
     }

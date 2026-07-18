@@ -23,7 +23,7 @@ public protocol MountTableReading: Sendable {
 /// Live kernel mount table via getmntinfo_r_np(3) — the same data `mount`
 /// prints, without a subprocess or text parsing. The _r variant is
 /// thread-safe; the plain getmntinfo shares one static buffer per process.
-public struct LiveMountTable: MountTableReading {
+public struct KernelMountTable: MountTableReading {
     public init() {}
 
     public func entries() throws -> [MountEntry] {

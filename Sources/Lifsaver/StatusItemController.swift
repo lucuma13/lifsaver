@@ -262,12 +262,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         // its blocking pipe reads on GCD, off the main actor.
         let scanner = self.scanner
         Task { [weak self] in
-            let outcome = await MountCoordinator.run(scanner: scanner)
+            let outcome = await EscalatedMount.run(scanner: scanner)
             self?.finishMount(outcome)
         }
     }
 
-    private func finishMount(_ outcome: MountCoordinator.Outcome) {
+    private func finishMount(_ outcome: EscalatedMount.Outcome) {
         mountInProgress = false
         // Logged separately from the escalated pass: whether a password was
         // needed at all is exactly what a mount bug report turns on.

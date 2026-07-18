@@ -2,10 +2,12 @@ import Foundation
 import LifsaverKit
 import os
 
-/// Re-runs the app's own binary as root through the standard macOS
-/// administrator password dialog (`do shell script … with administrator
-/// privileges`). The helper invocation (marked by `RootMountRunner.helperFlag`)
-/// scans and mounts as root, reporting back as JSON on stdout.
+/// Mounts stalled volumes in two passes, escalating only when it buys
+/// something, then re-runs the app's own binary as root through the standard
+/// macOS administrator password dialog (`do shell script … with administrator
+/// privileges`) for whatever the unprivileged pass could not reach. The helper
+/// invocation (marked by `EscalatedMountHelper.helperFlag`) scans and mounts as
+/// root, reporting back as JSON on stdout.
 ///
 /// `do shell script` swallows the inner command's exit status (a nonzero exit
 /// raises an AppleScript error instead), so the inner shell always exits 0 and
@@ -16,15 +18,48 @@ enum EscalatedMount {
     /// parenthesis: `execution error: User canceled. (-128)`.
     private static let userCancelledCode = -128
 
-    /// When argv carries the helper flag, this process was launched by `run()`
-    /// as the root helper: execute the mount sequence and exit. Called from
-    /// main.swift before any AppKit setup; never returns in that case.
+    struct Outcome: Sendable {
+        var unprivileged: MountReport.Counts
+        /// nil when the first pass left nothing for root to do — the case where
+        /// the user is never asked for a password at all.
+        var escalated: EscalatedMountOutcome?
+    }
+
+    /// Two-pass mount so the password dialog only appears when it buys
+    /// something.
+    ///
+    /// `diskutil mount` mounts external removable media as the logged-in user,
+    /// so the first pass runs in-process with no privileges and no prompt. Only
+    /// if it leaves a volume unmounted — the raw `/sbin/mount_*` fallback needs
+    /// root — does the app re-run its own binary under the admin dialog, which
+    /// rescans as root and picks up whatever is left.
+    static func run(scanner: DiskScanner) async -> Outcome {
+        let targets: [String]
+        do {
+            targets = try await scanner.scanTargets()
+        } catch {
+            // Escalating would only reach the same failing scan under root, so
+            // report it rather than spend a password dialog on it.
+            return Outcome(unprivileged: .init(), escalated: .error("scan failed: \(error)"))
+        }
+
+        // First pass: diskutil only, no escalation. A `.fail` here means
+        // "needs root", not "impossible".
+        let counts = await Mounter(scanner: scanner, allowRawFallback: false).mountAll(targets).counts
+        guard counts.fail > 0 else { return Outcome(unprivileged: counts, escalated: nil) }
+        return Outcome(unprivileged: counts, escalated: await escalate())
+    }
+
+    /// When argv carries the helper flag, this process was launched by
+    /// `escalate()` as the root helper: execute the mount sequence and exit.
+    /// Called from main.swift before any AppKit setup; never returns in that
+    /// case.
     static func exitIfHelperInvocation() {
-        guard CommandLine.arguments.contains(RootMountRunner.helperFlag) else { return }
+        guard CommandLine.arguments.contains(EscalatedMountHelper.helperFlag) else { return }
         let status = OSAllocatedUnfairLock(initialState: Int32(1))
         let finished = DispatchSemaphore(value: 0)
         Task.detached {
-            let result = await RootMountRunner.run()
+            let result = await EscalatedMountHelper.run()
             status.withLock { $0 = result }
             finished.signal()
         }
@@ -32,7 +67,8 @@ enum EscalatedMount {
         exit(status.withLock { $0 })
     }
 
-    static func run(runner: any ProcessRunning = DefaultProcessRunner()) async -> EscalatedMountOutcome {
+    /// Second pass: re-run our own binary as root through the password dialog.
+    static func escalate(runner: any ProcessRunning = DefaultProcessRunner()) async -> EscalatedMountOutcome {
         // Resolve symlinks first and validate + execute the same resolved path,
         // so the checked file is the file the password launches.
         let helperPath = URL(fileURLWithPath: Bundle.main.executablePath ?? CommandLine.arguments[0])
@@ -45,7 +81,7 @@ enum EscalatedMount {
         // string literal (backslashes first, then double quotes).
         let shellQuotedPath = "'" + helperPath.replacingOccurrences(of: "'", with: "'\\''") + "'"
         let innerCommand =
-            "\(shellQuotedPath) \(RootMountRunner.helperFlag) 2>/dev/null; printf '\\n\(sentinel)%d' \"$?\""
+            "\(shellQuotedPath) \(EscalatedMountHelper.helperFlag) 2>/dev/null; printf '\\n\(sentinel)%d' \"$?\""
         let appleScriptBody =
             innerCommand
             .replacingOccurrences(of: "\\", with: "\\\\")

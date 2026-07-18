@@ -76,7 +76,7 @@ private func runHelper(
         diskutilListSucceeds: diskutilListSucceeds, fsckActive: fsckActive)
     let console = CapturedConsole()
     var emitted: [String] = []
-    let status = await RootMountRunner.run(
+    let status = await EscalatedMountHelper.run(
         runner: runner,
         mountTable: mountTable,
         fileOps: FakeFileOperations(),
@@ -86,7 +86,7 @@ private func runHelper(
     return HelperRun(status: status, emitted: emitted, console: console)
 }
 
-@Suite struct RootMountRunnerTests {
+@Suite struct EscalatedMountHelperTests {
     @Test func mountsEachTargetAndRoundTripsThroughSharedReportType() async throws {
         // The app decodes this exact output as MountReport — assert the full
         // document round-trips, not just substrings.

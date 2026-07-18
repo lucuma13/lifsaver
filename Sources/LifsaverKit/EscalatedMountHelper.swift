@@ -4,7 +4,7 @@ import Foundation
 /// binary under the administrator password dialog with `helperFlag`, and this
 /// scans and mounts everything found, printing a `MountReport` JSON document
 /// on stdout for the app to parse.
-public enum RootMountRunner {
+public enum EscalatedMountHelper {
     /// Hidden argv flag marking an invocation as the escalated helper rather
     /// than the menu bar app. Frozen: an updated app may invoke a not yet
     /// restarted older binary's flag and vice versa.
@@ -15,7 +15,7 @@ public enum RootMountRunner {
     /// the invoking app discards).
     public static func run(
         runner: any ProcessRunning = DefaultProcessRunner(),
-        mountTable: any MountTableReading = LiveMountTable(),
+        mountTable: any MountTableReading = KernelMountTable(),
         fileOps: any FileOperating = DefaultFileOperations(),
         console: Console = Console(out: Console.standard.err, err: Console.standard.err),
         emit: (String) -> Void = { print($0) }

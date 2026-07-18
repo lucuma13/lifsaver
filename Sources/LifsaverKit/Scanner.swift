@@ -62,7 +62,7 @@ public struct DiskScanner: Sendable {
 
     public init(
         runner: any ProcessRunning,
-        mountTable: any MountTableReading = LiveMountTable(),
+        mountTable: any MountTableReading = KernelMountTable(),
         console: Console,
         verbose: Bool = false
     ) {
