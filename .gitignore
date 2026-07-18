@@ -113,8 +113,7 @@ fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
 
-# Local Xcode/SwiftPM user state. Package.resolved is committed, so the
-# template's blanket ".swiftpm" suggestion is not used as-is.
+# Local Xcode/SwiftPM user state.
 .swiftpm/
 DerivedData/
 
