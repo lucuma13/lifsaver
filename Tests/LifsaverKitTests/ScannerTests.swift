@@ -1,5 +1,3 @@
-// Consolidated one-file-per-subject suite:
-// swiftlint:disable file_length
 import Foundation
 import Testing
 import os
