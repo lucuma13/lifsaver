@@ -2,12 +2,16 @@ import AppKit
 import LifsaverKit
 import ServiceManagement
 
-/// Diagnostics from the core land in the log, never in a terminal that
-/// doesn't exist.
-private let quietConsole = Console(
-    out: { NSLog("lifsaver: %@", $0) },
-    err: { NSLog("lifsaver: %@", $0) }
-)
+/// Everything the scanner and mounter say, kept live so diagnostic reports
+/// carry what happened during past scans and mount attempts.
+private let liveLog = ConsoleLog()
+
+/// Diagnostics from the core land in the log.
+private let quietConsole = liveLog.console(
+    alsoTo: Console(
+        out: { NSLog("lifsaver: %@", $0) },
+        err: { NSLog("lifsaver: %@", $0) }
+    ))
 
 /// diskarbitrationd can keep fsck running for a while on a dirty card; while
 /// it does, the card may still mount on its own. Re-check on this cadence
@@ -269,6 +273,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func finishMount(_ outcome: EscalatedMount.Outcome) {
         mountInProgress = false
+        // The root pass ran in another process; its lines arrive in-band,
+        // already timestamped, and slot into the live log here.
+        if !outcome.helperLog.isEmpty {
+            liveLog.append(["--- escalated helper (root) ---"] + outcome.helperLog)
+        }
         // Logged separately from the escalated pass: whether a password was
         // needed at all is exactly what a mount bug report turns on.
         logEvent(StatusMenuModel.unprivilegedMountEventLine(for: outcome.unprivileged))
@@ -290,7 +299,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     @objc private func saveReportClicked() {
-        DiagnosticReportFlow.begin(appEvents: recentEvents)
+        DiagnosticReportFlow.begin(appEvents: recentEvents, liveLog: liveLog.snapshot())
     }
 
     /// Keeps the last few outcomes with timestamps; old entries roll off.

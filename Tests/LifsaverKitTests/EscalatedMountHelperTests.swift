@@ -129,6 +129,21 @@ private func runHelper(
         #expect(report.results == MountReport.Counts(ok: 0, fail: 0, skip: 0))
     }
 
+    @Test func reportCarriesTheLiveConsoleLog() async throws {
+        // The report's `log` is the only way the root-side play-by-play reaches
+        // diagnostic reports.
+        let run = await runHelper(devices: ["disk4s1"])
+        let report = try run.decodedReport()
+        #expect(report.log.contains { $0.contains("Target: /dev/disk4s1") })
+        #expect(report.log.contains { $0.contains("SUCCESS via diskutil") })
+    }
+
+    @Test func errorReportStillCarriesTheLogGatheredBeforeTheFailure() async throws {
+        let run = await runHelper(devices: ["disk4s1"], diskutilListSucceeds: false)
+        let report = try run.decodedReport()
+        #expect(report.log.contains { $0.contains("CRITICAL") })
+    }
+
     @Test func activeFsckSkipsTargetRatherThanMounting() async throws {
         // A skipped volume is not a failure — nothing was left in a bad state.
         let run = await runHelper(devices: ["disk4s1"], fsckActive: true)

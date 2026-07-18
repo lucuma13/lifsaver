@@ -23,6 +23,9 @@ enum EscalatedMount {
         /// nil when the first pass left nothing for root to do — the case where
         /// the user is never asked for a password at all.
         var escalated: EscalatedMountOutcome?
+        /// Timestamped console lines the root helper recorded, carried in-band
+        /// because the escalation plumbing discards the helper's stderr.
+        var helperLog: [String] = []
     }
 
     /// Two-pass mount so the password dialog only appears when it buys
@@ -47,7 +50,8 @@ enum EscalatedMount {
         // "needs root", not "impossible".
         let counts = await Mounter(scanner: scanner, allowRawFallback: false).mountAll(targets).counts
         guard counts.fail > 0 else { return Outcome(unprivileged: counts, escalated: nil) }
-        return Outcome(unprivileged: counts, escalated: await escalate())
+        let (escalated, helperLog) = await escalate()
+        return Outcome(unprivileged: counts, escalated: escalated, helperLog: helperLog)
     }
 
     /// When argv carries the helper flag, this process was launched by
@@ -68,13 +72,17 @@ enum EscalatedMount {
     }
 
     /// Second pass: re-run our own binary as root through the password dialog.
-    static func escalate(runner: any ProcessRunning = DefaultProcessRunner()) async -> EscalatedMountOutcome {
+    /// Alongside the outcome, returns whatever log lines the helper carried
+    /// back in its report (empty on cancel or launch failure).
+    static func escalate(
+        runner: any ProcessRunning = DefaultProcessRunner()
+    ) async -> (outcome: EscalatedMountOutcome, helperLog: [String]) {
         // Resolve symlinks first and validate + execute the same resolved path,
         // so the checked file is the file the password launches.
         let helperPath = URL(fileURLWithPath: Bundle.main.executablePath ?? CommandLine.arguments[0])
             .resolvingSymlinksInPath().path
         if let reason = escalationSafetyError(forExecutableAt: helperPath) {
-            return .error("refusing to escalate: \(reason)")
+            return (.error("refusing to escalate: \(reason)"), [])
         }
 
         // Quote for the shell, then escape the whole line for the AppleScript
@@ -95,15 +103,15 @@ enum EscalatedMount {
             // cooperative pool, so nothing blocks while the dialog waits.
             result = try await runner.run("/usr/bin/osascript", ["-e", script], timeout: .infinity)
         } catch {
-            return .error("could not launch osascript: \(error)")
+            return (.error("could not launch osascript: \(error)"), [])
         }
 
         if result.status != 0 {
             let message = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
             if appleScriptErrorCode(from: message) == userCancelledCode {
-                return .cancelled
+                return (.cancelled, [])
             }
-            return .error(message)
+            return (.error(message), [])
         }
 
         return parse(stdout: result.stdoutText)
@@ -145,9 +153,9 @@ enum EscalatedMount {
         return nil
     }
 
-    private static func parse(stdout: String) -> EscalatedMountOutcome {
+    private static func parse(stdout: String) -> (outcome: EscalatedMountOutcome, helperLog: [String]) {
         guard let sentinelRange = stdout.range(of: sentinel, options: .backwards) else {
-            return .error("missing exit sentinel in helper output")
+            return (.error("missing exit sentinel in helper output"), [])
         }
         let exitText = stdout[sentinelRange.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
         let payload = String(stdout[..<sentinelRange.lowerBound])
@@ -157,14 +165,14 @@ enum EscalatedMount {
             let report = try? JSONDecoder().decode(MountReport.self, from: Data(payload[jsonStart...].utf8))
         else {
             let exitCode = Int32(exitText) ?? -1
-            return .error("unreadable helper output (exit \(exitCode))")
+            return (.error("unreadable helper output (exit \(exitCode))"), [])
         }
 
         // The helper's stderr is discarded by the escalation plumbing, so a
         // root-side failure arrives in-band.
         if let error = report.error {
-            return .error(error)
+            return (.error(error), report.log)
         }
-        return .report(report.results)
+        return (.report(report.results), report.log)
     }
 }

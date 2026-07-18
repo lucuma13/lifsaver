@@ -3,7 +3,7 @@
 ///
 /// Encoded with sorted keys:
 ///
-///     {"mounted":[…],"results":{"fail":0,"ok":1,"skip":0},"targets":["disk4s1"]}
+///     {"log":[…],"mounted":[…],"results":{"fail":0,"ok":1,"skip":0},"targets":["disk4s1"]}
 public struct MountReport: Codable, Sendable, Equatable {
     public struct Counts: Codable, Sendable, Equatable {
         public var ok: Int
@@ -34,11 +34,19 @@ public struct MountReport: Codable, Sendable, Equatable {
     /// threw). Carried in-band because the invoking app discards the helper's
     /// stderr — this is the only channel that survives the escalation.
     public var error: String?
+    /// Timestamped console lines the helper recorded while scanning and
+    /// mounting, carried in-band for the same reason as `error`. The app merges
+    /// them into its live log for diagnostic reports.
+    public var log: [String]
 
-    public init(targets: [String], results: Counts = .init(), mounted: [MountedVolume] = [], error: String? = nil) {
+    public init(
+        targets: [String], results: Counts = .init(), mounted: [MountedVolume] = [],
+        error: String? = nil, log: [String] = []
+    ) {
         self.targets = targets
         self.results = results
         self.mounted = mounted
         self.error = error
+        self.log = log
     }
 }

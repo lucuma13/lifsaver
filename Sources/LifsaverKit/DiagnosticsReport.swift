@@ -52,14 +52,18 @@ public struct DiagnosticsReporter: Sendable {
     }
 
     /// `userNote` is the reporter's own description of what went wrong;
-    /// `appEvents` are the menu bar app's recent scan/mount outcomes.
-    public func generate(userNote: String = "", appEvents: [String] = []) async -> String {
+    /// `appEvents` are the app's recent scan/mount outcomes; `liveLog` is the
+    /// console output recorded live during those scans and mount attempts.
+    public func generate(userNote: String = "", appEvents: [String] = [], liveLog: [String] = []) async -> String {
         let note = userNote.trimmingCharacters(in: .whitespacesAndNewlines)
         var sections: [(String, String)] = [
             ("What happened", note.isEmpty ? "(not provided)" : note)
         ]
         if !appEvents.isEmpty {
             sections.append(("Recent app events", appEvents.joined(separator: "\n")))
+        }
+        if !liveLog.isEmpty {
+            sections.append(("Live log", liveLog.joined(separator: "\n")))
         }
         sections.append(("Scan trace", await scanTrace()))
         sections.append(("Mount table", mountTableDump()))

@@ -59,6 +59,17 @@ private struct StubError: Error {}
         let report = await reporter().generate(userNote: "  \n")
         #expect(report.contains("(not provided)"))
         #expect(!report.contains("## Recent app events"))
+        #expect(!report.contains("## Live log"))
+    }
+
+    @Test func liveLogIsEmbeddedVerbatim() async {
+        let report = await reporter().generate(liveLog: [
+            "2026-07-17T10:00:01Z Attempting diskutil mount...",
+            "--- escalated helper (root) ---",
+        ])
+        #expect(report.contains("## Live log"))
+        #expect(report.contains("2026-07-17T10:00:01Z Attempting diskutil mount..."))
+        #expect(report.contains("--- escalated helper (root) ---"))
     }
 
     @Test func failingCommandsNeverAbortTheReport() async {
