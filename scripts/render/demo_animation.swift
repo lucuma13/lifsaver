@@ -1,8 +1,8 @@
 import AppKit
 
-// Render the demo animation docs/images/demo.gif.
+// Render the demo animation for README
 //
-// Usage: swift demo_gif.swift   (requires ffmpeg: brew install ffmpeg)
+// Usage: swift demo_animation.swift   (requires ffmpeg: brew install ffmpeg)
 
 // MARK: - Config
 
@@ -10,7 +10,7 @@ let projectRoot =
     URL(fileURLWithPath: #filePath)
     .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
 let resourcesDir = projectRoot.appendingPathComponent("scripts/release/app-resources").path
-let outputGif = projectRoot.appendingPathComponent("docs/images/demo.gif").path
+let outputGif = projectRoot.appendingPathComponent("docs/images/lifsaver_demo_animation.gif").path
 
 // Scratch dir for the intermediate PNG frames + ffmpeg concat manifest.
 let outputDir = NSTemporaryDirectory() + "lifsaver-demo-\(ProcessInfo.processInfo.processIdentifier)"
