@@ -26,28 +26,10 @@ enum MountCoordinator {
             return Outcome(unprivileged: .init(), escalated: .error("scan failed: \(error)"))
         }
 
-        let counts = await mountUnprivileged(targets, scanner: scanner)
+        // First pass: diskutil only, no escalation. A `.fail` here means
+        // "needs root", not "impossible".
+        let counts = await Mounter(scanner: scanner, allowRawFallback: false).mountAll(targets).counts
         guard counts.fail > 0 else { return Outcome(unprivileged: counts, escalated: nil) }
         return Outcome(unprivileged: counts, escalated: await EscalatedMount.run())
-    }
-
-    /// First pass: diskutil only, no escalation. A `.fail` here means "needs
-    /// root", not "impossible".
-    private static func mountUnprivileged(
-        _ targets: [String], scanner: DiskScanner
-    ) async -> MountReport.Counts {
-        let mounter = Mounter(scanner: scanner, allowRawFallback: false)
-        var counts = MountReport.Counts()
-        for devId in targets {
-            switch await mounter.execute(devId) {
-            case .ok:
-                counts.ok += 1
-            case .fail:
-                counts.fail += 1
-            case .skip:
-                counts.skip += 1
-            }
-        }
-        return counts
     }
 }

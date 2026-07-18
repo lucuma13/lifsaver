@@ -116,12 +116,17 @@ private func runHelper(
         #expect(report.results == MountReport.Counts(ok: 0, fail: 1, skip: 0))
     }
 
-    @Test func failedScanReportsCriticalAndEmitsNothing() async {
-        // Stdout must never carry a half-report the app would misparse.
+    @Test func failedScanEmitsErrorReport() async throws {
+        // The invoking app discards this process's stderr, so the failure must
+        // arrive in-band as a well-formed report with `error` set — the user
+        // already paid for a password dialog and deserves the cause.
         let run = await runHelper(devices: ["disk4s1"], diskutilListSucceeds: false)
         #expect(run.status == 1)
-        #expect(run.emitted.isEmpty)
         #expect(run.console.errText.contains("CRITICAL"))
+        let report = try run.decodedReport()
+        #expect(report.error?.contains("root-side scan failed") == true)
+        #expect(report.targets.isEmpty)
+        #expect(report.results == MountReport.Counts(ok: 0, fail: 0, skip: 0))
     }
 
     @Test func activeFsckSkipsTargetRatherThanMounting() async throws {

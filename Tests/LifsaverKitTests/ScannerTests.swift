@@ -20,35 +20,36 @@ import Testing
 // ===========================================================================
 
 @Suite struct ActiveMountsTests {
-    @Test func collectsDevEntries() {
+    @Test func collectsDevEntries() throws {
         let table = FakeMountTable([
             MountEntry(device: "/dev/disk1s1", mountPoint: "/"),
             MountEntry(device: "/dev/disk3s1", mountPoint: "/Volumes/NO_NAME"),
         ])
-        let result = makeScanner(mountTable: table).activeMounts()
+        let result = try makeScanner(mountTable: table).activeMounts()
         #expect(result == ["/dev/disk1s1", "/dev/disk3s1"])
     }
 
-    @Test func ignoresVirtualFilesystems() {
+    @Test func ignoresVirtualFilesystems() throws {
         let table = FakeMountTable([
             MountEntry(device: "devfs", mountPoint: "/dev"),
             MountEntry(device: "map auto_home", mountPoint: "/System/Volumes/Data/home"),
             MountEntry(device: "/dev/disk1s1", mountPoint: "/"),
         ])
-        let result = makeScanner(mountTable: table).activeMounts()
+        let result = try makeScanner(mountTable: table).activeMounts()
         #expect(result == ["/dev/disk1s1"])
     }
 
-    @Test func returnsEmptySetOnFailure() {
-        let captured = CapturedConsole()
+    @Test func throwsOnFailure() {
+        // A read failure must never read as "nothing mounted" — that would turn
+        // every mounted volume into a mount target.
         let table = FakeMountTable(throwing: POSIXError(.EIO))
-        let result = makeScanner(mountTable: table, console: captured.console).activeMounts()
-        #expect(result.isEmpty)
-        #expect(captured.errText.contains("WARNING"))
+        #expect(throws: (any Error).self) {
+            try makeScanner(mountTable: table).activeMounts()
+        }
     }
 
-    @Test func returnsEmptySetOnEmptyTable() {
-        #expect(makeScanner(mountTable: FakeMountTable()).activeMounts().isEmpty)
+    @Test func returnsEmptySetOnEmptyTable() throws {
+        #expect(try makeScanner(mountTable: FakeMountTable()).activeMounts().isEmpty)
     }
 }
 
@@ -59,12 +60,22 @@ import Testing
 @Suite struct IsCurrentlyMountedTests {
     @Test func trueWhenPresent() {
         let table = FakeMountTable([MountEntry(device: "/dev/disk4s1", mountPoint: "/Volumes/X")])
-        #expect(makeScanner(mountTable: table).isCurrentlyMounted("disk4s1"))
+        #expect(makeScanner(mountTable: table).isCurrentlyMounted("disk4s1") == true)
     }
 
     @Test func falseWhenAbsent() {
         let table = FakeMountTable([MountEntry(device: "/dev/disk1s1", mountPoint: "/")])
-        #expect(!makeScanner(mountTable: table).isCurrentlyMounted("disk4s1"))
+        #expect(makeScanner(mountTable: table).isCurrentlyMounted("disk4s1") == false)
+    }
+
+    @Test func nilWhenTableUnreadable() {
+        // "Unknown" is a distinct answer: callers must not conflate an
+        // unreadable table with "unmounted".
+        let captured = CapturedConsole()
+        let table = FakeMountTable(throwing: POSIXError(.EIO))
+        let scanner = makeScanner(mountTable: table, console: captured.console)
+        #expect(scanner.isCurrentlyMounted("disk4s1") == nil)
+        #expect(captured.errText.contains("WARNING"))
     }
 
     @Test func alwaysTakesFreshSnapshot() {
@@ -186,16 +197,19 @@ import Testing
         #expect(await makeScanner(runner: runner).partitionFSType("disk4s1") == "exfat")
     }
 
-    @Test func fallsBackToContentWhenNoFilesystemType() async {
-        let info: [String: Any] = ["Content": "DOS_FAT_32"]
+    @Test(arguments: [("DOS_FAT_32", "msdos"), ("Windows_FAT_32", "msdos"), ("Windows_NTFS", "windows_ntfs")])
+    func fallsBackToContentWhenNoFilesystemType(content: String, expected: String) async {
+        // FAT partition types map onto the token the mount path understands (so
+        // mount_msdos is tried first); ambiguous types pass through.
+        let info: [String: Any] = ["Content": content]
         let runner = FakeProcessRunner(always: ProcessResult(status: 0, stdout: plistData(info)))
-        #expect(await makeScanner(runner: runner).partitionFSType("disk4s1") == "dos_fat_32")
+        #expect(await makeScanner(runner: runner).partitionFSType("disk4s1") == expected)
     }
 
     @Test func fallsBackToContentWhenFilesystemTypeEmpty() async {
         let info: [String: Any] = ["FilesystemType": "", "Content": "DOS_FAT_32"]
         let runner = FakeProcessRunner(always: ProcessResult(status: 0, stdout: plistData(info)))
-        #expect(await makeScanner(runner: runner).partitionFSType("disk4s1") == "dos_fat_32")
+        #expect(await makeScanner(runner: runner).partitionFSType("disk4s1") == "msdos")
     }
 
     @Test func returnsEmptyStringOnFailure() async {

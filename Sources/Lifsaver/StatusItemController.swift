@@ -14,6 +14,17 @@ private let quietConsole = Console(
 /// instead of calling the card stalled.
 private let fsckRetryDelay: TimeInterval = 15
 
+/// Single source for what the app says about its own distribution. The
+/// packaging scripts and workflows must produce a matching asset name; releases
+/// are tagged `v<version>` (enforced by publish.yml).
+private let githubRepo = "lucuma13/lifsaver"
+private let installerAssetName = "lifsaver_installer_macos.pkg"
+
+/// `UpdateChecker.start()` is cache-gated to at most one request per day;
+/// re-arming it on this cadence keeps a launch-at-login instance that runs for
+/// weeks discovering releases, instead of only ever checking at launch.
+private let updateRecheckInterval: TimeInterval = 6 * 60 * 60
+
 /// Owns the status-bar item and its menu. A DiskArbitration watcher rescans
 /// (read-only) whenever disks appear, disappear, mount, or unmount, so
 /// stalled cards are flagged proactively: the icon turns orange and a
@@ -27,18 +38,23 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let scanner = DiskScanner(runner: DefaultProcessRunner(), console: quietConsole)
     private let updateChecker = UpdateChecker(
         package: "lifsaver",
-        repo: "lucuma13/lifsaver",
+        repo: githubRepo,
         currentVersion: lifsaverVersion
     )
+    private var updateRecheckTimer: Timer?
 
-    /// Invalidates in-flight scans when a newer one starts.
-    private var scanGeneration = ScanGeneration()
+    /// Monotonic token invalidating in-flight scans when a newer one starts.
+    private var scanGeneration = 0
     private var mountInProgress = false
 
     private var lastScan: StatusMenuModel.ScanState?
     private var stalledWatch = StalledWatchState()
     private var diskWatcher: DiskActivityWatcher?
     private var checkingForUpdates = false
+    private var menuIsOpen = false
+    /// SMAppService.status is a blocking launchd XPC round-trip; query it when
+    /// the menu opens or the toggle flips, not on every rebuild.
+    private var launchAtLoginEnabled = false
 
     /// Recent scan/mount outcomes, embedded in diagnostic reports.
     private var recentEvents: [String] = []
@@ -82,22 +98,36 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         diskWatcher = DiskActivityWatcher { [weak self] in self?.startScan() }
 
         updateChecker.start()
+        let checker = updateChecker
+        let timer = Timer(timeInterval: updateRecheckInterval, repeats: true) { _ in
+            checker.start()
+        }
+        timer.tolerance = updateRecheckInterval / 4
+        RunLoop.main.add(timer, forMode: .common)
+        updateRecheckTimer = timer
     }
 
     // MARK: - NSMenuDelegate
 
     func menuWillOpen(_ menu: NSMenu) {
+        menuIsOpen = true
         guard !mountInProgress else { return }
+        launchAtLoginEnabled = SMAppService.mainApp.status == .enabled
         // The watcher keeps `lastScan` current, so show it straight away and
         // let the reconciling scan mutate the menu in place if anything moved.
-        rebuildMenu(state: lastScan ?? .scanning)
+        rebuildMenu()
         startScan()
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        menuIsOpen = false
     }
 
     // MARK: - Scanning
 
     private func startScan() {
-        let generation = scanGeneration.begin()
+        scanGeneration += 1
+        let generation = scanGeneration
 
         // The scan is async (subprocess waits suspend rather than block), so
         // it can run as a main-actor task without freezing the menu.
@@ -105,21 +135,25 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         Task { [weak self] in
             do {
                 let devices = try await scanner.scanTargets()
-                var targets: [StatusMenuModel.ScanTarget] = []
-                var settled: [String] = []
-                for device in devices {
-                    targets.append(
-                        StatusMenuModel.ScanTarget(
-                            devId: device,
-                            fsType: await scanner.partitionFSType(device)
-                        )
-                    )
-                    // A card diskarbitrationd is still fsck-ing may yet mount
-                    // on its own — don't call it stalled.
-                    if !(await scanner.isFsckActive(device)) {
-                        settled.append(device)
+                // The per-device queries are independent — fan them out instead
+                // of paying one subprocess round-trip after another.
+                let fsTypes = await withTaskGroup(of: (Int, String).self) { group in
+                    for (index, device) in devices.enumerated() {
+                        group.addTask { (index, await scanner.partitionFSType(device)) }
                     }
+                    var results = [String](repeating: "", count: devices.count)
+                    for await (index, fsType) in group {
+                        results[index] = fsType
+                    }
+                    return results
                 }
+                let targets = zip(devices, fsTypes).map { StatusMenuModel.ScanTarget(devId: $0, fsType: $1) }
+                // A card diskarbitrationd is still fsck-ing may yet mount on
+                // its own — don't call it stalled. One pgrep snapshot serves
+                // every device; per-device freshness only matters at mount
+                // time, where Mounter re-checks.
+                let fsckListing = await scanner.fsckListing()
+                let settled = devices.filter { !scanner.isFsckActive($0, listing: fsckListing) }
                 self?.finishScan(
                     .results(targets),
                     settled: settled,
@@ -140,7 +174,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         fsckPending: Bool,
         generation: Int
     ) {
-        guard scanGeneration.isCurrent(generation) else { return }
+        guard generation == scanGeneration else { return }
         lastScan = state
 
         // A failed scan proves nothing about the disks; leave the stalled
@@ -152,7 +186,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             }
             refreshIcon()
         }
-        rebuildMenu(state: state)
+        // Every open rebuilds anyway; while the menu is closed only the icon
+        // needs to stay current.
+        if menuIsOpen {
+            rebuildMenu()
+        }
 
         // fsck can finish without producing a disk event; look again shortly.
         if fsckPending {
@@ -193,50 +231,19 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     // MARK: - Menu construction
 
-    private func rebuildMenu(state: StatusMenuModel.ScanState) {
+    private func rebuildMenu() {
         menu.removeAllItems()
 
         let entries = StatusMenuModel.entries(
-            state: state,
+            state: lastScan ?? .scanning,
             newerVersion: updateChecker.knownNewerVersion(),
             isCheckingForUpdates: checkingForUpdates,
             showLaunchAtLogin: Bundle.main.bundleIdentifier != nil,
-            launchAtLoginEnabled: SMAppService.mainApp.status == .enabled
+            launchAtLoginEnabled: launchAtLoginEnabled
         )
         for entry in entries {
             menu.addItem(menuItem(for: entry))
         }
-    }
-
-    private func menuItem(for entry: StatusMenuModel.Entry) -> NSMenuItem {
-        switch entry {
-        case .separator:
-            return NSMenuItem.separator()
-        case .disabled(let title):
-            let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-            item.isEnabled = false
-            return item
-        case .mount(let title):
-            return actionItem(title: title, action: #selector(mountClicked))
-        case .checkForUpdates(let title):
-            return actionItem(title: title, action: #selector(checkForUpdatesClicked))
-        case .updateAvailable(let title):
-            return actionItem(title: title, action: #selector(downloadLatestInstaller))
-        case .launchAtLogin(let enabled):
-            let item = actionItem(title: "Start at Login", action: #selector(toggleLaunchAtLogin))
-            item.state = enabled ? .on : .off
-            return item
-        case .saveReport(let title):
-            return actionItem(title: title, action: #selector(saveReportClicked))
-        case .quit(let title):
-            return actionItem(title: title, action: #selector(quit), keyEquivalent: "q")
-        }
-    }
-
-    private func actionItem(title: String, action: Selector, keyEquivalent: String = "") -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: action, keyEquivalent: keyEquivalent)
-        item.target = self
-        return item
     }
 
     // MARK: - Actions
@@ -299,27 +306,29 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func checkForUpdatesClicked() {
         guard !checkingForUpdates else { return }
         checkingForUpdates = true
-        rebuildMenu(state: lastScan ?? .scanning)
+        rebuildMenu()
 
         Task { [weak self] in
             guard let self else { return }
             await updateChecker.checkNow()
             checkingForUpdates = false
-            rebuildMenu(state: lastScan ?? .scanning)
+            rebuildMenu()
         }
     }
 
-    /// Downloads the latest installer directly rather than sending the user to
-    /// the releases page. The asset name is frozen — already-shipped versions
-    /// point at it.
+    /// Downloads the installer for exactly the version the menu item named,
+    /// rather than sending the user to the releases page. Not the
+    /// `releases/latest/download/…` alias: GitHub resolves that to the newest
+    /// non-prerelease release, which 404s while only prereleases exist and can
+    /// serve a different version than the item advertised.
     @objc private func downloadLatestInstaller() {
-        let url = URL(
-            string:
-                "https://github.com/lucuma13/lifsaver/releases/latest/download/lifsaver_installer_macos.pkg"
-        )
-        if let url {
-            NSWorkspace.shared.open(url)
-        }
+        guard
+            let version = updateChecker.knownNewerVersion(),
+            let url = URL(
+                string: "https://github.com/\(githubRepo)/releases/download/v\(version)/\(installerAssetName)"
+            )
+        else { return }
+        NSWorkspace.shared.open(url)
     }
 
     @objc private func toggleLaunchAtLogin() {
@@ -332,9 +341,45 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         } catch {
             NSLog("lifsaver: launch-at-login toggle failed: %@", "\(error)")
         }
+        launchAtLoginEnabled = SMAppService.mainApp.status == .enabled
     }
 
     @objc private func quit() {
         NSApp.terminate(nil)
+    }
+}
+
+// MARK: - Menu entry rendering
+
+extension StatusItemController {
+    fileprivate func menuItem(for entry: StatusMenuModel.Entry) -> NSMenuItem {
+        switch entry {
+        case .separator:
+            return NSMenuItem.separator()
+        case .disabled(let title):
+            let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+            item.isEnabled = false
+            return item
+        case .mount(let title):
+            return actionItem(title: title, action: #selector(mountClicked))
+        case .checkForUpdates(let title):
+            return actionItem(title: title, action: #selector(checkForUpdatesClicked))
+        case .updateAvailable(let title):
+            return actionItem(title: title, action: #selector(downloadLatestInstaller))
+        case .launchAtLogin(let enabled):
+            let item = actionItem(title: "Start at Login", action: #selector(toggleLaunchAtLogin))
+            item.state = enabled ? .on : .off
+            return item
+        case .saveReport(let title):
+            return actionItem(title: title, action: #selector(saveReportClicked))
+        case .quit(let title):
+            return actionItem(title: title, action: #selector(quit), keyEquivalent: "q")
+        }
+    }
+
+    private func actionItem(title: String, action: Selector, keyEquivalent: String = "") -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: keyEquivalent)
+        item.target = self
+        return item
     }
 }

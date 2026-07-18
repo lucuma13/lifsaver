@@ -12,9 +12,9 @@ import os
 /// appends a `__EXIT:<n>` sentinel that carries the real status back.
 enum EscalatedMount {
     private static let sentinel = "__EXIT:"
-    /// AppleScript's userCanceledErr — osascript reports the error code as a
-    /// suffix: `execution error: User canceled. (-128)`.
-    private static let userCancelledSuffix = "(-128)"
+    /// AppleScript's userCanceledErr — osascript reports the code in a trailing
+    /// parenthesis: `execution error: User canceled. (-128)`.
+    private static let userCancelledCode = -128
 
     /// When argv carries the helper flag, this process was launched by `run()`
     /// as the root helper: execute the mount sequence and exit. Called from
@@ -33,7 +33,13 @@ enum EscalatedMount {
     }
 
     static func run(runner: any ProcessRunning = DefaultProcessRunner()) async -> EscalatedMountOutcome {
-        let helperPath = Bundle.main.executablePath ?? CommandLine.arguments[0]
+        // Resolve symlinks first and validate + execute the same resolved path,
+        // so the checked file is the file the password launches.
+        let helperPath = URL(fileURLWithPath: Bundle.main.executablePath ?? CommandLine.arguments[0])
+            .resolvingSymlinksInPath().path
+        if let reason = escalationSafetyError(forExecutableAt: helperPath) {
+            return .error("refusing to escalate: \(reason)")
+        }
 
         // Quote for the shell, then escape the whole line for the AppleScript
         // string literal (backslashes first, then double quotes).
@@ -58,13 +64,49 @@ enum EscalatedMount {
 
         if result.status != 0 {
             let message = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
-            if message.hasSuffix(userCancelledSuffix) {
+            if appleScriptErrorCode(from: message) == userCancelledCode {
                 return .cancelled
             }
             return .error(message)
         }
 
         return parse(stdout: result.stdoutText)
+    }
+
+    /// The numeric code from a trailing "(<code>)" in an osascript error
+    /// message, or nil. Parsing the code instead of pinning one rendered string
+    /// keeps cancel detection working if the message text around the code ever
+    /// changes.
+    private static func appleScriptErrorCode(from message: String) -> Int? {
+        guard
+            message.hasSuffix(")"),
+            let open = message.lastIndex(of: "(")
+        else { return nil }
+        return Int(message[message.index(after: open)..<message.index(before: message.endIndex)])
+    }
+
+    /// The path about to be re-executed as root must not be swappable by other
+    /// unprivileged processes while the password dialog is up: require a
+    /// regular file owned by root or by us, with no group/other write bit. (A
+    /// fully user-writable parent directory can still be swapped under us; this
+    /// refuses the plainly unsafe cases without breaking dev builds, which are
+    /// user-owned 755 binaries.)
+    private static func escalationSafetyError(forExecutableAt path: String) -> String? {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: path) else {
+            return "cannot inspect helper binary at \(path)"
+        }
+        guard attributes[.type] as? FileAttributeType == .typeRegular else {
+            return "helper binary at \(path) is not a regular file"
+        }
+        let owner = (attributes[.ownerAccountID] as? NSNumber)?.uint32Value
+        guard owner == 0 || owner == getuid() else {
+            return "helper binary at \(path) is owned by another user"
+        }
+        let permissions = (attributes[.posixPermissions] as? NSNumber)?.int16Value ?? 0
+        guard permissions & 0o022 == 0 else {
+            return "helper binary at \(path) is writable by other users"
+        }
+        return nil
     }
 
     private static func parse(stdout: String) -> EscalatedMountOutcome {
@@ -82,6 +124,11 @@ enum EscalatedMount {
             return .error("unreadable helper output (exit \(exitCode))")
         }
 
+        // The helper's stderr is discarded by the escalation plumbing, so a
+        // root-side failure arrives in-band.
+        if let error = report.error {
+            return .error(error)
+        }
         return .report(report.results)
     }
 }

@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import os
 
 @testable import LifsaverKit
 
@@ -38,6 +39,29 @@ import Testing
     @Test func failsClosedOnUnreadablePlist() async {
         let runner = FakeProcessRunner(always: ProcessResult(status: 0, stdout: Data("not a plist".utf8)))
         #expect(!(await makeScanner(runner: runner).isExternalHardware("disk4")))
+    }
+
+    @Test func retriesOnceAfterTransientQueryFailure() async {
+        // diskutil is most likely to be flaky exactly when diskarbitrationd is
+        // wedged on a stalled card; one transient failure must not hide it.
+        let external = plistData(infoExternal)
+        let attempts = OSAllocatedUnfairLock(initialState: 0)
+        let runner = FakeProcessRunner { _, _ in
+            let attempt = attempts.withLock { count -> Int in
+                count += 1
+                return count
+            }
+            return attempt == 1 ? ProcessResult(status: 1) : ProcessResult(status: 0, stdout: external)
+        }
+        #expect(await makeScanner(runner: runner).isExternalHardware("disk4"))
+        #expect(attempts.withLock { $0 } == 2)
+    }
+
+    @Test func confirmedInternalIsNotRetried() async {
+        // A successful query whose keys say "internal" is final.
+        let runner = diskutilRunner(info: ["disk0": infoInternalFixed])
+        #expect(!(await makeScanner(runner: runner).isExternalHardware("disk0")))
+        #expect(runner.calls.count == 1)
     }
 }
 
@@ -214,7 +238,7 @@ import Testing
         "Apple_CoreStorage",
         "EFI",
     ])
-    func allBlocklistedContentTypesAreRejected(contentType: String) async {
+    func systemContentTypesAreRejected(contentType: String) async {
         let data: [String: Any] = [
             "AllDisksAndPartitions": [
                 [
@@ -225,6 +249,64 @@ import Testing
         ]
         let runner = diskutilRunner(info: ["disk4": infoExternal])
         let targets = await makeScanner(runner: runner).filterTargetPartitions(data, activeMounts: [])
+        #expect(targets.isEmpty)
+    }
+
+    @Test(arguments: ["Microsoft Basic Data Extra", "exFAT2", "NTFS"])
+    func allowlistMatchingIsExactNotSubstring(contentType: String) async {
+        // The most dangerous decision the app makes must not widen through a
+        // partial match against an unexpected Content value.
+        let data: [String: Any] = [
+            "AllDisksAndPartitions": [
+                [
+                    "DeviceIdentifier": "disk4",
+                    "Partitions": [["DeviceIdentifier": "disk4s1", "Content": contentType]],
+                ]
+            ]
+        ]
+        let runner = diskutilRunner(info: ["disk4": infoExternal])
+        let targets = await makeScanner(runner: runner).filterTargetPartitions(data, activeMounts: [])
+        #expect(targets.isEmpty)
+    }
+
+    @Test func unpartitionedSuperfloppyDiskIsATarget() async {
+        // Cards formatted without a partition map put the filesystem on the
+        // whole-disk node: no Partitions array, the Content sits on the disk.
+        let data: [String: Any] = [
+            "AllDisksAndPartitions": [
+                ["DeviceIdentifier": "disk4", "Content": "Windows_FAT_32"]
+            ]
+        ]
+        let runner = diskutilRunner(info: ["disk4": infoExternal])
+        let targets = await makeScanner(runner: runner).filterTargetPartitions(data, activeMounts: [])
+        #expect(targets == ["disk4"])
+    }
+
+    @Test func partitionSchemeWholeDiskIsNotATarget() async {
+        // A partitioned disk whose partitions were all filtered must not fall
+        // back to offering the whole-disk node.
+        let data: [String: Any] = [
+            "AllDisksAndPartitions": [
+                [
+                    "DeviceIdentifier": "disk4",
+                    "Content": "GUID_partition_scheme",
+                    "Partitions": [["DeviceIdentifier": "disk4s1", "Content": "EFI"]],
+                ]
+            ]
+        ]
+        let runner = diskutilRunner(info: ["disk4": infoExternal])
+        let targets = await makeScanner(runner: runner).filterTargetPartitions(data, activeMounts: [])
+        #expect(targets.isEmpty)
+    }
+
+    @Test func mountedSuperfloppyDiskIsSkipped() async {
+        let data: [String: Any] = [
+            "AllDisksAndPartitions": [
+                ["DeviceIdentifier": "disk4", "Content": "Windows_FAT_32"]
+            ]
+        ]
+        let runner = diskutilRunner(info: ["disk4": infoExternal])
+        let targets = await makeScanner(runner: runner).filterTargetPartitions(data, activeMounts: ["/dev/disk4"])
         #expect(targets.isEmpty)
     }
 }
@@ -242,5 +324,15 @@ import Testing
         let targets = try await makeScanner(runner: runner, mountTable: table).scanTargets()
         #expect(!targets.contains("disk4s2"))
         #expect(targets.contains("disk4s3"))
+    }
+
+    @Test func throwsWhenMountTableUnreadable() async {
+        // Guessing "nothing mounted" would offer every mounted volume as a
+        // target; a scan that cannot see the table must fail loudly.
+        let runner = diskutilRunner(list: diskutilPlistExternalExfat, info: ["disk4": infoExternal])
+        let table = FakeMountTable(throwing: POSIXError(.EIO))
+        await #expect(throws: DiskUtilError.self) {
+            try await makeScanner(runner: runner, mountTable: table).scanTargets()
+        }
     }
 }

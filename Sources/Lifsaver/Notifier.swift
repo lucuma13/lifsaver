@@ -33,7 +33,17 @@ enum Notifier {
 
         Task {
             let center = UNUserNotificationCenter.current()
-            let granted = (try? await center.requestAuthorization(options: [.alert])) ?? false
+            // Run the authorization flow only while undetermined; afterwards
+            // the recorded settings answer without re-requesting per post.
+            let granted: Bool
+            switch await center.notificationSettings().authorizationStatus {
+            case .notDetermined:
+                granted = (try? await center.requestAuthorization(options: [.alert])) ?? false
+            case .authorized, .provisional:
+                granted = true
+            default:
+                granted = false
+            }
             guard granted else {
                 NSLog("lifsaver notification (permission denied): %@ — %@", title, body)
                 return

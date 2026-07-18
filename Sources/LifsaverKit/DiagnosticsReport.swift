@@ -64,8 +64,12 @@ public struct DiagnosticsReporter: Sendable {
         sections.append(("Scan trace", await scanTrace()))
         sections.append(("Mount table", mountTableDump()))
         sections.append(("fsck processes", await fsckDump()))
-        sections.append(("diskutil list -plist", await rawCommand("diskutil", ["list", "-plist"])))
-        sections.append(("diskutil info -plist, per whole disk", await diskInfoDump()))
+        // One listing serves both the raw dump and the per-disk enumeration — a
+        // second spawn could disagree with the first mid-report, which is
+        // exactly the inconsistency a diagnostic report exists to rule out.
+        let listing = await rawCommand("diskutil", ["list", "-plist"])
+        sections.append(("diskutil list -plist", listing))
+        sections.append(("diskutil info -plist, per whole disk", await diskInfoDump(fromListing: listing)))
 
         return header() + "\n\n"
             + sections.map { "## \($0.0)\n\n\($0.1)" }.joined(separator: "\n\n") + "\n"
@@ -130,11 +134,11 @@ public struct DiagnosticsReporter: Sendable {
     }
 
     /// The externality signals (`Internal`, `RemovableMediaOrExternalDevice`)
-    /// exist only in per-disk `info` output, so dump it for every whole disk.
-    private func diskInfoDump() async -> String {
+    /// exist only in per-disk `info` output, so dump it for every whole disk
+    /// named in the already-captured listing.
+    private func diskInfoDump(fromListing listing: String) async -> String {
         guard
-            let result = try? await runner.run("diskutil", ["list", "-plist"], timeout: queryTimeout),
-            let plist = try? PropertyListSerialization.propertyList(from: result.stdout, format: nil),
+            let plist = try? PropertyListSerialization.propertyList(from: Data(listing.utf8), format: nil),
             let data = plist as? [String: Any]
         else { return "unavailable: could not enumerate disks" }
 

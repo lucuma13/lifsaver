@@ -26,30 +26,24 @@ public enum RootMountRunner {
         do {
             targets = try await scanner.scanTargets()
         } catch {
+            // The invoking app discards this process's stderr, so the failure
+            // must also travel in the JSON report — otherwise the user pays for
+            // a password dialog and learns nothing about why it failed.
             console.err("CRITICAL: \(error)")
+            emitReport(MountReport(targets: [], error: "root-side scan failed: \(error)"), emit: emit)
             return 1
         }
 
-        var results = MountReport.Counts()
-        var mounted: [MountReport.MountedVolume] = []
-        let mounter = Mounter(scanner: scanner, fileOps: fileOps)
-        for devId in targets {
-            switch await mounter.execute(devId) {
-            case .ok:
-                results.ok += 1
-                mounted.append(.init(device: devId, mountPoint: scanner.mountPoint(of: devId)))
-            case .fail:
-                results.fail += 1
-            case .skip:
-                results.skip += 1
-            }
-        }
+        let pass = await Mounter(scanner: scanner, fileOps: fileOps).mountAll(targets)
+        emitReport(MountReport(targets: targets, results: pass.counts, mounted: pass.mounted), emit: emit)
+        return pass.counts.fail > 0 ? 1 : 0
+    }
 
+    private static func emitReport(_ report: MountReport, emit: (String) -> Void) {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        if let data = try? encoder.encode(MountReport(targets: targets, results: results, mounted: mounted)) {
+        if let data = try? encoder.encode(report) {
             emit(String(decoding: data, as: UTF8.self))
         }
-        return results.fail > 0 ? 1 : 0
     }
 }

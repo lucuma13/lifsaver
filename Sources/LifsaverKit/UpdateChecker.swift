@@ -141,10 +141,19 @@ public protocol LatestReleaseFetching: Sendable {
 }
 
 public struct GitHubReleaseFetcher: LatestReleaseFetching {
+    /// A hostile or misbehaving server (captive portal, proxy) must not balloon
+    /// memory inside a long-lived menu bar app: the body is streamed and
+    /// abandoned at this cap, never buffered whole before checking.
+    static let maxResponseBytes = 1 << 20
+
     public init() {}
 
     public func fetchLatestTag(repo: String, userAgent: String, timeout: TimeInterval) async -> String? {
-        guard let url = URL(string: "https://api.github.com/repos/\(repo)/releases/latest") else {
+        // Not /releases/latest: GitHub defines that as the newest release NOT
+        // marked prerelease (404 when only prereleases exist), which would
+        // blind the checker to this project's beta releases. The newest release
+        // of any kind is the first element of /releases.
+        guard let url = URL(string: "https://api.github.com/repos/\(repo)/releases?per_page=1") else {
             return nil
         }
         var request = URLRequest(url: url, timeoutInterval: timeout)
@@ -152,13 +161,22 @@ public struct GitHubReleaseFetcher: LatestReleaseFetching {
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
 
         guard
-            let (data, response) = try? await URLSession.shared.data(for: request),
+            let (bytes, response) = try? await URLSession.shared.bytes(for: request),
             let http = response as? HTTPURLResponse, http.statusCode == 200,
-            data.count <= 1 << 20,
-            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let tagName = object["tag_name"] as? String
+            let data = try? await Self.collect(bytes, limit: Self.maxResponseBytes),
+            let releases = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
+            let tagName = releases.first?["tag_name"] as? String
         else { return nil }
         return tagName
+    }
+
+    private static func collect(_ bytes: URLSession.AsyncBytes, limit: Int) async throws -> Data {
+        var data = Data()
+        for try await byte in bytes {
+            data.append(byte)
+            guard data.count <= limit else { throw URLError(.dataLengthExceedsMaximum) }
+        }
+        return data
     }
 }
 
@@ -210,16 +228,7 @@ public final class UpdateChecker: Sendable {
             return nil
         }
         return Task(priority: .utility) { [self] in
-            guard
-                let tag = await fetcher.fetchLatestTag(
-                    repo: repo,
-                    userAgent: "\(package)/\(currentVersion) (update-check)",
-                    timeout: 5
-                )
-            else { return }
-            let version = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
-            latestBox.withLock { $0 = version }
-            writeCache(version)
+            await refresh()
         }
     }
 
@@ -237,6 +246,15 @@ public final class UpdateChecker: Sendable {
     /// Refreshes the known version and cache; the result is then reflected by
     /// `knownNewerVersion()`. For the GUI "Check for Updates" menu action.
     public func checkNow() async {
+        await refresh()
+    }
+
+    // --- internals ---------------------------------------------------------
+
+    /// Fetch the newest release tag, normalize it, and publish it to both the
+    /// in-memory box and the on-disk cache. Single body shared by the passive
+    /// launch check and the manual menu check so the two can never drift.
+    private func refresh() async {
         guard
             let tag = await fetcher.fetchLatestTag(
                 repo: repo,
@@ -249,16 +267,17 @@ public final class UpdateChecker: Sendable {
         writeCache(version)
     }
 
-    // --- internals ---------------------------------------------------------
-
     func readCache() -> String? {
         guard
             let data = try? Data(contentsOf: cacheFile),
             let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
             let checkedAt = object["checked_at"] as? Double,
-            let cachedLatest = object["latest"] as? String,
-            Date().timeIntervalSince1970 - checkedAt < checkInterval
+            let cachedLatest = object["latest"] as? String
         else { return nil }
+        // A future checked_at (clock skew, NTP jump) must read as stale, not as
+        // "fresh until the wall clock catches up".
+        let elapsed = Date().timeIntervalSince1970 - checkedAt
+        guard elapsed >= 0, elapsed < checkInterval else { return nil }
         return cachedLatest
     }
 

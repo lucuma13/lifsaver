@@ -183,14 +183,15 @@ import Testing
                 == .report(.init(ok: 2, fail: 1, skip: 1)))
     }
 
-    @Test func cancellationAloneStaysSilent() {
-        #expect(combined(.init(fail: 1), .cancelled) == .cancelled)
+    @Test func cancellationAloneReportsTheDeclinedVolumesAsFailed() {
+        // Declining the password leaves the volume unmounted — a failure.
+        #expect(combined(.init(fail: 1), .cancelled) == .report(.init(fail: 1)))
     }
 
-    @Test func cancellingTheRestKeepsWhatAlreadyMounted() {
-        // Declining the dialog is not a failure of the volume that mounted
-        // before it appeared.
-        #expect(combined(.init(ok: 1, fail: 1), .cancelled) == .report(.init(ok: 1)))
+    @Test func cancellingTheRestFailsThemAndKeepsWhatAlreadyMounted() {
+        // What mounted before the prompt still counts; what the user declined
+        // to authorize is reported as failed, not silently dropped.
+        #expect(combined(.init(ok: 1, fail: 1), .cancelled) == .report(.init(ok: 1, fail: 1)))
     }
 
     @Test func errorAlonePassesThrough() {
@@ -232,8 +233,20 @@ import Testing
         #expect(body(for: .cancelled) == nil)
     }
 
-    @Test func anyFailureWinsOverSuccesses() {
-        #expect(body(for: .report(.init(ok: 2, fail: 1, skip: 0))) == "Mount failed")
+    @Test func singleVolumeFailureIsPlain() {
+        #expect(body(for: .report(.init(ok: 0, fail: 1, skip: 0))) == "Mount failed")
+    }
+
+    @Test func multiVolumeFailureSummarisesBothHalves() {
+        #expect(
+            body(for: .report(.init(ok: 2, fail: 1, skip: 0)))
+                == "Mount failed (2 mounted, 1 failed)")
+    }
+
+    @Test func allVolumesFailingStillSummarisesWhenSeveral() {
+        #expect(
+            body(for: .report(.init(ok: 0, fail: 2, skip: 0)))
+                == "Mount failed (0 mounted, 2 failed)")
     }
 
     @Test func singleSuccessUsesSingularNoun() {
@@ -309,25 +322,5 @@ import Testing
         #expect(
             StatusMenuModel.stalledNotificationBody(newCount: 3)
                 == "3 stalled volumes detected")
-    }
-}
-
-// ===========================================================================
-// Scan generation
-// ===========================================================================
-
-@Suite struct ScanGenerationTests {
-    @Test func latestTokenIsCurrent() {
-        var generation = ScanGeneration()
-        let token = generation.begin()
-        #expect(generation.isCurrent(token))
-    }
-
-    @Test func newScanInvalidatesEarlierToken() {
-        var generation = ScanGeneration()
-        let stale = generation.begin()
-        let fresh = generation.begin()
-        #expect(!generation.isCurrent(stale))
-        #expect(generation.isCurrent(fresh))
     }
 }

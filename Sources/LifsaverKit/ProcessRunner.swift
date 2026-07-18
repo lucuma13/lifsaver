@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 public struct ProcessResult: Sendable {
     public let status: Int32
@@ -77,18 +78,7 @@ public struct DefaultProcessRunner: ProcessRunning {
         process.standardError = errPipe
         process.standardInput = FileHandle.nullDevice
 
-        // Installed before run() so an instantly-exiting child cannot slip
-        // past; the stream buffers the exit until it is awaited. The reason
-        // rides along so a timeout can be told apart from a natural exit.
-        let (terminations, termination) = AsyncStream.makeStream(of: ChildExit.self)
-        process.terminationHandler = { process in
-            termination.yield(
-                ChildExit(
-                    status: process.terminationStatus,
-                    killedBySignal: process.terminationReason == .uncaughtSignal
-                ))
-            termination.finish()
-        }
+        let (terminations, exited) = Self.terminationStream(for: process)
 
         do {
             try process.run()
@@ -103,7 +93,7 @@ public struct DefaultProcessRunner: ProcessRunning {
         async let stderrData = Self.drain(errPipe.fileHandleForReading)
 
         let pid = process.processIdentifier
-        let watchdog = Self.watchdog(pid: pid, timeout: timeout)
+        let watchdog = Self.watchdog(pid: pid, timeout: timeout, exited: exited)
 
         var childExit: ChildExit?
         for await exit in terminations {
@@ -114,7 +104,9 @@ public struct DefaultProcessRunner: ProcessRunning {
         guard let childExit else {
             // Only possible when the surrounding task was cancelled, which
             // ends stream iteration early: reap the child and propagate.
-            kill(pid, SIGKILL)
+            if !exited.withLock({ $0 }) {
+                kill(pid, SIGKILL)
+            }
             process.waitUntilExit()
             _ = await (stdoutData, stderrData)
             throw CancellationError()
@@ -138,15 +130,45 @@ public struct DefaultProcessRunner: ProcessRunning {
         )
     }
 
+    /// Installed before run() so an instantly-exiting child cannot slip past;
+    /// the stream buffers the exit until it is awaited. The reason rides along
+    /// so a timeout can be told apart from a natural exit. `exited` flips
+    /// synchronously in the handler so a late signal sender can tell "still
+    /// running" from "already reaped": a SIGKILL aimed at a reaped pid can hit
+    /// an unrelated, recycled pid — as root in the escalated helper. The check
+    /// narrows that window to the instant between Foundation reaping the child
+    /// and the handler running.
+    private static func terminationStream(
+        for process: Process
+    ) -> (AsyncStream<ChildExit>, OSAllocatedUnfairLock<Bool>) {
+        let exited = OSAllocatedUnfairLock(initialState: false)
+        let (terminations, termination) = AsyncStream.makeStream(of: ChildExit.self)
+        process.terminationHandler = { process in
+            exited.withLock { $0 = true }
+            termination.yield(
+                ChildExit(
+                    status: process.terminationStatus,
+                    killedBySignal: process.terminationReason == .uncaughtSignal
+                ))
+            termination.finish()
+        }
+        return (terminations, exited)
+    }
+
     /// SIGKILLs `pid` once `timeout` elapses; the task's value reports
     /// whether it fired. An infinite timeout means no watchdog at all — for
     /// commands that legitimately wait on the user (e.g. a password dialog).
-    private static func watchdog(pid: pid_t, timeout: TimeInterval) -> Task<Bool, Never>? {
+    private static func watchdog(
+        pid: pid_t, timeout: TimeInterval, exited: OSAllocatedUnfairLock<Bool>
+    ) -> Task<Bool, Never>? {
         guard timeout.isFinite else { return nil }
         return Task {
             guard (try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))) != nil else {
                 return false  // cancelled — the child exited in time
             }
+            // A child that exited right at the timeout boundary was reaped; its
+            // pid may already belong to someone else. Never kill it.
+            guard !exited.withLock({ $0 }) else { return false }
             kill(pid, SIGKILL)
             return true
         }

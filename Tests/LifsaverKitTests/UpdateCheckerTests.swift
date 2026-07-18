@@ -170,6 +170,23 @@ private func check(_ checker: UpdateChecker) async {
         #expect(permissions == 0o600)
     }
 
+    @Test func futureTimestampReadsAsStale() async throws {
+        // Clock skew (fast clock at write, NTP correction after) must not pin
+        // the cache "fresh" until the wall clock catches up.
+        let directory = temporaryDirectory()
+        let future: [String: Any] = [
+            "latest": "0.0.1", "checked_at": Date().timeIntervalSince1970 + 3 * 24 * 60 * 60,
+        ]
+        try JSONSerialization.data(withJSONObject: future)
+            .write(to: directory.appendingPathComponent("update-check.json"))
+
+        let fetcher = FakeReleaseFetcher(tag: "v9.9.9")
+        let checker = makeChecker(fetcher: fetcher, cacheDirectory: directory)
+        await check(checker)
+        #expect(fetcher.fetchCount == 1)
+        #expect(checker.knownNewerVersion() == "9.9.9")
+    }
+
     @Test func corruptCacheIsIgnored() async throws {
         let directory = temporaryDirectory()
         try Data("not json at all {".utf8)

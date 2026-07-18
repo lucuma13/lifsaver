@@ -6,24 +6,6 @@ public enum EscalatedMountOutcome: Equatable, Sendable {
     case error(String)
 }
 
-/// Invalidates in-flight scan results once a newer scan has started.
-public struct ScanGeneration: Sendable {
-    private var current = 0
-
-    public init() {}
-
-    /// Marks the start of a new scan and returns its token.
-    public mutating func begin() -> Int {
-        current += 1
-        return current
-    }
-
-    /// True while `token` still belongs to the most recently started scan.
-    public func isCurrent(_ token: Int) -> Bool {
-        token == current
-    }
-}
-
 /// Tracks which stalled volumes the user has already been alerted about, so
 /// the background disk watcher notifies once per card, not once per rescan.
 public struct StalledWatchState: Sendable {
@@ -172,10 +154,10 @@ public enum StatusMenuModel {
         case .report(let counts):
             return .report(.init(ok: unprivileged.ok + counts.ok, fail: counts.fail, skip: counts.skip))
         case .cancelled:
-            // Dismissing the dialog declines the rest rather than failing at
-            // it; whatever mounted before the prompt still counts.
-            guard unprivileged.ok > 0 else { return .cancelled }
-            return .report(.init(ok: unprivileged.ok))
+            // Declining the dialog leaves the remaining volumes unmounted —
+            // that is a failure of the mount attempt, reported alongside
+            // whatever mounted before the prompt.
+            return .report(.init(ok: unprivileged.ok, fail: unprivileged.fail))
         case .error:
             // The escalation never ran, so the first pass's failures stand.
             guard unprivileged.ok > 0 else { return escalated }
@@ -184,14 +166,19 @@ public enum StatusMenuModel {
     }
 
     /// Body of the user-facing notification for a finished mount attempt, or
-    /// nil when the outcome warrants none (user dismissed the password dialog).
+    /// nil when the outcome warrants none.
     public static func notificationBody(for outcome: EscalatedMountOutcome) -> String? {
         switch outcome {
         case .cancelled:
+            // Unreachable from the app flow: combinedOutcome folds a cancel
+            // into a report whose failures carry the notification.
             return nil
         case .report(let counts):
             if counts.fail > 0 {
-                return "Mount failed"
+                // With several volumes in play a bare "failed" would hide the
+                // partial result — summarise both halves.
+                guard counts.ok + counts.fail + counts.skip > 1 else { return "Mount failed" }
+                return "Mount failed (\(counts.ok) mounted, \(counts.fail) failed)"
             }
             if counts.ok > 0 {
                 let noun = counts.ok == 1 ? "volume" : "volumes"

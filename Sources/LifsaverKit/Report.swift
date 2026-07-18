@@ -30,10 +30,15 @@ public struct MountReport: Codable, Sendable, Equatable {
     public var targets: [String]
     public var results: Counts
     public var mounted: [MountedVolume]
+    /// Set when the helper failed before mounting anything (e.g. its scan
+    /// threw). Carried in-band because the invoking app discards the helper's
+    /// stderr — this is the only channel that survives the escalation.
+    public var error: String?
 
-    public init(targets: [String], results: Counts = .init(), mounted: [MountedVolume] = []) {
+    public init(targets: [String], results: Counts = .init(), mounted: [MountedVolume] = [], error: String? = nil) {
         self.targets = targets
         self.results = results
         self.mounted = mounted
+        self.error = error
     }
 }

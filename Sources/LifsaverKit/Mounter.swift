@@ -70,8 +70,10 @@ public struct Mounter: Sendable {
             console.out("\nTarget: /dev/\(devId)")
         }
 
-        // Re-query live mount table immediately before acting (race guard)
-        if scanner.isCurrentlyMounted(devId) {
+        // Re-query live mount table immediately before acting (race guard). nil
+        // (table unreadable) proceeds: diskutil mount on an already mounted
+        // volume is a harmless no-op, skipping a stalled one is not.
+        if scanner.isCurrentlyMounted(devId) == true {
             console.out("  SKIPPED — /dev/\(devId) became mounted since scan.")
             return .skip
         }
@@ -102,12 +104,15 @@ public struct Mounter: Sendable {
 
     /// Try `diskutil mount` first (preferred; handles LIFS sandboxing), then
     /// fall back to raw mount binaries.  Verifies against the live mount table
-    /// after each attempt.
+    /// after each attempt; when the table cannot be read (nil), the mount
+    /// binary's zero exit stands — an unreadable table must not turn a
+    /// successful mount into a spurious failure (and, one level up, into an
+    /// unwarranted admin password prompt).
     func attemptMounts(_ devId: String, fsType: String) async -> Bool {
         if verbose {
             console.out("  Attempting diskutil mount...")
         }
-        if await diskutilMount(devId), scanner.isCurrentlyMounted(devId) {
+        if await diskutilMount(devId), scanner.isCurrentlyMounted(devId) != false {
             if verbose {
                 let location = scanner.mountPoint(of: devId)
                 console.out("  SUCCESS via diskutil → \(location.isEmpty ? "(see /Volumes)" : location)")
@@ -121,7 +126,7 @@ public struct Mounter: Sendable {
             console.out("  diskutil mount failed; falling back to raw mount binaries...")
         }
         if await rawMount(devId, fsType: fsType) {
-            if scanner.isCurrentlyMounted(devId) {
+            if scanner.isCurrentlyMounted(devId) != false {
                 if verbose {
                     console.out("  SUCCESS via raw mount → \(rawMountPoint(devId))")
                 }
@@ -133,6 +138,33 @@ public struct Mounter: Sendable {
         }
 
         return false
+    }
+
+    /// One pass over `targets`: mount each and tally, collecting the mount
+    /// points of the volumes this pass mounted. Shared by the unprivileged
+    /// first pass and the escalated root helper so their tallies can never
+    /// drift.
+    public struct PassResult: Sendable {
+        public var counts = MountReport.Counts()
+        public var mounted: [MountReport.MountedVolume] = []
+
+        public init() {}
+    }
+
+    public func mountAll(_ targets: [String]) async -> PassResult {
+        var result = PassResult()
+        for devId in targets {
+            switch await execute(devId) {
+            case .ok:
+                result.counts.ok += 1
+                result.mounted.append(.init(device: devId, mountPoint: scanner.mountPoint(of: devId)))
+            case .fail:
+                result.counts.fail += 1
+            case .skip:
+                result.counts.skip += 1
+            }
+        }
+        return result
     }
 
     /// Where rawMount grafts the volume — the raw binaries need an explicit,
@@ -149,15 +181,23 @@ public struct Mounter: Sendable {
         do {
             result = try await runner.run("diskutil", ["mount", devId], timeout: mountTimeout)
         } catch {
-            if verbose {
-                console.err("  [diskutil error] \(error)")
-            }
+            logError("diskutil", error)
             return false
         }
-        if verbose && !result.stderr.isEmpty {
-            console.err("  [diskutil stderr] \(result.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
-        }
+        logStderr("diskutil", result)
         return result.status == 0
+    }
+
+    /// Verbose diagnostic logging shared by every mount attempt, so the
+    /// diskutil and raw-binary paths always trace identically.
+    private func logStderr(_ label: String, _ result: ProcessResult) {
+        guard verbose, !result.stderr.isEmpty else { return }
+        console.err("  [\(label) stderr] \(result.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
+    }
+
+    private func logError(_ label: String, _ error: any Error) {
+        guard verbose else { return }
+        console.err("  [\(label) error] \(error)")
     }
 
     /// Fallback: use low-level mount binaries when diskutil mount is
@@ -201,14 +241,10 @@ public struct Mounter: Sendable {
             } catch {
                 // Missing binary (removed in newer macOS) or a hung card reader:
                 // move on to the next candidate rather than crashing.
-                if verbose {
-                    console.err("  [\(name) error] \(error)")
-                }
+                logError(name, error)
                 continue
             }
-            if verbose && !result.stderr.isEmpty {
-                console.err("  [\(name) stderr] \(result.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
-            }
+            logStderr(name, result)
             if result.status == 0 {
                 return true
             }
