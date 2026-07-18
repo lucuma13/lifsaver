@@ -1,7 +1,7 @@
 import Foundation
 import os
 
-@testable import LifsaverCore
+@testable import LifsaverKit
 
 // ---------------------------------------------------------------------------
 // Fake process runner

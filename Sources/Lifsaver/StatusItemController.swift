@@ -1,5 +1,5 @@
 import AppKit
-import LifsaverCore
+import LifsaverKit
 import ServiceManagement
 
 /// Diagnostics from the core land in the log, never in a terminal that

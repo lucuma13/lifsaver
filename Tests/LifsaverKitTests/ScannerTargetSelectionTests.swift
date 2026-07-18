@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@testable import LifsaverCore
+@testable import LifsaverKit
 
 // ===========================================================================
 // isExternalHardware

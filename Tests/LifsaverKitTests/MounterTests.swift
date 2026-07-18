@@ -2,7 +2,7 @@ import Foundation
 import Testing
 import os
 
-@testable import LifsaverCore
+@testable import LifsaverKit
 
 /// Records mount-point directory operations; optionally fails creation.
 final class FakeFileOperations: FileOperating {

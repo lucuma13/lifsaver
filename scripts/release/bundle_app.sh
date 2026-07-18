@@ -11,7 +11,7 @@ cd "$ROOT"
 VERSION="$("$ROOT/scripts/version.sh")"
 
 BIN_PATH="$ROOT/.build/universal-release"
-[ -x "$BIN_PATH/LifsaverApp" ] || {
+[ -x "$BIN_PATH/Lifsaver" ] || {
   echo "ERROR: run scripts/release/build.sh first" >&2
   exit 1
 }
@@ -20,7 +20,7 @@ APP="$ROOT/dist/Lifsaver.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
-cp "$BIN_PATH/LifsaverApp" "$APP/Contents/MacOS/Lifsaver"
+cp "$BIN_PATH/Lifsaver" "$APP/Contents/MacOS/Lifsaver"
 chmod 755 "$APP/Contents/MacOS/Lifsaver"
 
 # Menu-bar icons (loose @1x/@2x/@3x PNG files; NSImage(named:) resolves them):

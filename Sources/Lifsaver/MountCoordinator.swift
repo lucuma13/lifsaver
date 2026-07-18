@@ -1,4 +1,4 @@
-import LifsaverCore
+import LifsaverKit
 
 /// Mounts stalled volumes in two passes, so the password dialog only appears
 /// when it buys something.

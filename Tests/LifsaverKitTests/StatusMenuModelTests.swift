@@ -1,6 +1,6 @@
 import Testing
 
-@testable import LifsaverCore
+@testable import LifsaverKit
 
 // ===========================================================================
 // Menu entries

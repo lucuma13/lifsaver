@@ -1,5 +1,5 @@
 import Foundation
-import LifsaverCore
+import LifsaverKit
 import os
 
 /// Re-runs the app's own binary as root through the standard macOS

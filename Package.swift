@@ -2,17 +2,17 @@
 import PackageDescription
 
 let package = Package(
-    name: "lifsaver",
+    name: "Lifsaver",
     platforms: [.macOS(.v13)],
     targets: [
-        .target(name: "LifsaverCore"),
+        .target(name: "LifsaverKit"),
         .executableTarget(
-            name: "LifsaverApp",
-            dependencies: ["LifsaverCore"]
+            name: "Lifsaver",
+            dependencies: ["LifsaverKit"]
         ),
         .testTarget(
-            name: "LifsaverCoreTests",
-            dependencies: ["LifsaverCore"]
+            name: "LifsaverKitTests",
+            dependencies: ["LifsaverKit"]
         ),
     ]
 )

@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@testable import LifsaverCore
+@testable import LifsaverKit
 
 /// Real-subprocess tests for DefaultProcessRunner — everything else in the
 /// suite fakes ProcessRunning, so the genuine launch/drain/timeout paths are

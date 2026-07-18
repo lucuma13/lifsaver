@@ -1,5 +1,5 @@
 import AppKit
-import LifsaverCore
+import LifsaverKit
 
 /// UI flow behind the "Save Diagnostic Report…" menu item: ask for an
 /// optional description, pick a destination, then gather the report and

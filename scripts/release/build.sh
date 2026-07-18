@@ -12,10 +12,10 @@ swift build -c release --arch x86_64
 OUT="$ROOT/.build/universal-release"
 mkdir -p "$OUT"
 lipo -create \
-  ".build/arm64-apple-macosx/release/LifsaverApp" \
-  ".build/x86_64-apple-macosx/release/LifsaverApp" \
-  -output "$OUT/LifsaverApp"
-printf 'LifsaverApp: '
-lipo -archs "$OUT/LifsaverApp"
+  ".build/arm64-apple-macosx/release/Lifsaver" \
+  ".build/x86_64-apple-macosx/release/Lifsaver" \
+  -output "$OUT/Lifsaver"
+printf 'Lifsaver: '
+lipo -archs "$OUT/Lifsaver"
 
 echo "Products: $OUT"
