@@ -119,10 +119,10 @@ let iconSize: CGFloat = 13
 // Keep these menu items in sync with StatusMenuModel.entries.
 let separatorTag = "—separator—"
 let menuItems = [
-    "Mount 2 stalled volumes", separatorTag, "Start at Login", "Send Diagnostic Report", "Check for Updates", "Quit",
+    "Mount 2 stalled volumes", separatorTag, "Send Diagnostic Report", "Check for Updates", "Settings", "Quit",
 ]
 let mountItem = menuItems[0]
-let checkedItem = "Start at Login"  // shown enabled, with a checkmark
+let submenuItem = "Settings"  // shown with a right-pointing disclosure arrow
 let rowHeight: CGFloat = 24
 let separatorHeight: CGFloat = 9
 let menuInsetX: CGFloat = 13
@@ -251,16 +251,18 @@ func drawBanner(_ frame: Frame) {
 }
 
 /// A small checkmark in the menu's left gutter, `centerY` in top-left coords.
-func drawCheckmark(centerY: CGFloat) {
-    let left = menuLeftX + 2.5
-    // Short stroke down to the elbow, long stroke up to the tip.
-    let points: [(CGFloat, CGFloat)] = [(0, 3.2), (2.6, 6), (7, 0)]
+/// The right-pointing chevron macOS draws in the trailing edge of a row that
+/// opens a submenu.
+func drawSubmenuArrow(centerY: CGFloat) {
+    let tipX = menuLeftX + menuWidth - menuInsetX
+    // Up to the tip, down to the base — a ">" pointing right.
+    let points: [(CGFloat, CGFloat)] = [(-3.4, -3.4), (0, 0), (-3.4, 3.4)]
     let path = NSBezierPath()
     for (index, point) in points.enumerated() {
-        let vertex = NSPoint(x: left + point.0, y: canvasHeight - (centerY - 3 + point.1))
+        let vertex = NSPoint(x: tipX + point.0, y: canvasHeight - (centerY + point.1))
         if index == 0 { path.move(to: vertex) } else { path.line(to: vertex) }
     }
-    path.lineWidth = 1.6
+    path.lineWidth = 1.5
     path.lineCapStyle = .round
     path.lineJoinStyle = .round
     color(hex: 0xffffff, alpha: 0.9).setStroke()
@@ -307,11 +309,11 @@ func drawMenu(_ frame: Frame) {
         }
         let textColor = (isMount && frame.highlight) ? NSColor.white : color(hex: 0xffffff, alpha: 0.9)
         let font = isMount ? mountFont : menuFont
-        // "Start at Login" is enabled in the demo — show the checkmark a real
-        // macOS menu draws in the left gutter of a checked item. Hand-drawn at
-        // a fixed size so it stays within the inset, clear of the text.
-        if item == checkedItem {
-            drawCheckmark(centerY: rowTop + rowHeight / 2)
+        // "Settings" opens a submenu — show the disclosure arrow a real
+        // macOS menu draws in the trailing edge. Hand-drawn at a fixed size so
+        // it stays within the inset, clear of the text.
+        if item == submenuItem {
+            drawSubmenuArrow(centerY: rowTop + rowHeight / 2)
         }
         drawText(
             item, font: font, color: textColor,

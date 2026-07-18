@@ -58,7 +58,9 @@ public enum StatusMenuModel {
         case separator
         case checkForUpdates(title: String)
         case updateAvailable(title: String)
-        case launchAtLogin(enabled: Bool)
+        /// The "Settings" submenu. `showStartAtLogin` is false on unbundled
+        /// dev runs, where SMAppService has no bundle to register.
+        case moreOptions(showStartAtLogin: Bool, startAtLoginEnabled: Bool, automaticUpdatesEnabled: Bool)
         case saveReport(title: String)
         case quit(title: String)
     }
@@ -68,7 +70,8 @@ public enum StatusMenuModel {
         newerVersion: String?,
         isCheckingForUpdates: Bool = false,
         showLaunchAtLogin: Bool,
-        launchAtLoginEnabled: Bool
+        launchAtLoginEnabled: Bool,
+        automaticUpdatesEnabled: Bool
     ) -> [Entry] {
         var entries: [Entry] = []
 
@@ -86,14 +89,10 @@ public enum StatusMenuModel {
 
         entries.append(.separator)
 
-        if showLaunchAtLogin {
-            entries.append(.launchAtLogin(enabled: launchAtLoginEnabled))
-        }
         // Always present — reports are most needed exactly when scans fail.
         entries.append(.saveReport(title: "Send Diagnostic Report"))
-        // The update item is always present, kept second-to-last: it opens the
-        // latest installer once a newer version is known, otherwise it triggers
-        // a manual check on click.
+        // The update item is always present: it opens the latest installer once
+        // a newer version is known, otherwise it triggers a manual check on click.
         if let newerVersion {
             entries.append(.updateAvailable(title: "Update to version \(newerVersion)"))
         } else if isCheckingForUpdates {
@@ -101,6 +100,11 @@ public enum StatusMenuModel {
         } else {
             entries.append(.checkForUpdates(title: "Check for Updates"))
         }
+        entries.append(
+            .moreOptions(
+                showStartAtLogin: showLaunchAtLogin,
+                startAtLoginEnabled: launchAtLoginEnabled,
+                automaticUpdatesEnabled: automaticUpdatesEnabled))
         entries.append(.quit(title: "Quit"))
 
         return entries

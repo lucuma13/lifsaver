@@ -29,6 +29,10 @@ private let installerAssetName = "lifsaver_installer_macos.pkg"
 /// weeks discovering releases, instead of only ever checking at launch.
 private let updateRecheckInterval: TimeInterval = 6 * 60 * 60
 
+/// User preferences for auto updates and start at login.
+private let automaticUpdatesDefaultsKey = "AutomaticUpdatesEnabled"
+private let loginItemDefaultAppliedKey = "DidApplyLoginItemDefault"
+
 /// Owns the status-bar item and its menu. A DiskArbitration watcher rescans
 /// (read-only) whenever disks appear, disappear, mount, or unmount, so
 /// stalled cards are flagged proactively: the icon turns orange and a
@@ -97,13 +101,20 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         statusItem.menu = menu
         refreshIcon()
 
+        // Auto updates and start-at-login are both opt-out.
+        UserDefaults.standard.register(defaults: [automaticUpdatesDefaultsKey: true])
+        applyDefaultLoginItemIfNeeded()
+
         Notifier.installClickHandler { [weak self] in self?.startMount() }
         // Registration replays all present disks, which triggers the first scan.
         diskWatcher = DiskActivityWatcher { [weak self] in self?.startScan() }
 
-        updateChecker.start()
+        if automaticUpdatesEnabled {
+            updateChecker.start()
+        }
         let checker = updateChecker
         let timer = Timer(timeInterval: updateRecheckInterval, repeats: true) { _ in
+            guard UserDefaults.standard.bool(forKey: automaticUpdatesDefaultsKey) else { return }
             checker.start()
         }
         timer.tolerance = updateRecheckInterval / 4
@@ -243,7 +254,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             newerVersion: updateChecker.knownNewerVersion(),
             isCheckingForUpdates: checkingForUpdates,
             showLaunchAtLogin: Bundle.main.bundleIdentifier != nil,
-            launchAtLoginEnabled: launchAtLoginEnabled
+            launchAtLoginEnabled: launchAtLoginEnabled,
+            automaticUpdatesEnabled: automaticUpdatesEnabled
         )
         for entry in entries {
             menu.addItem(menuItem(for: entry))
@@ -340,7 +352,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         NSWorkspace.shared.open(url)
     }
 
-    @objc private func toggleLaunchAtLogin() {
+    @objc private func toggleLaunchAtLogin(_ sender: NSMenuItem) {
         do {
             if SMAppService.mainApp.status == .enabled {
                 try SMAppService.mainApp.unregister()
@@ -351,6 +363,38 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             NSLog("lifsaver: launch-at-login toggle failed: %@", "\(error)")
         }
         launchAtLoginEnabled = SMAppService.mainApp.status == .enabled
+        // Update the checkmark in place; rebuilding would dismiss the submenu.
+        sender.state = launchAtLoginEnabled ? .on : .off
+    }
+
+    /// Auto updates are opt-out.
+    private var automaticUpdatesEnabled: Bool {
+        UserDefaults.standard.bool(forKey: automaticUpdatesDefaultsKey)
+    }
+
+    @objc private func toggleAutomaticUpdates(_ sender: NSMenuItem) {
+        let enabled = !automaticUpdatesEnabled
+        UserDefaults.standard.set(enabled, forKey: automaticUpdatesDefaultsKey)
+        // Re-enabling should look now, not wait for the next recheck tick.
+        if enabled {
+            updateChecker.start()
+        }
+        sender.state = enabled ? .on : .off
+    }
+
+    /// Start at login: enable on first launch, then leave untouched.
+    private func applyDefaultLoginItemIfNeeded() {
+        guard Bundle.main.bundleIdentifier != nil else { return }
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: loginItemDefaultAppliedKey) else { return }
+        defaults.set(true, forKey: loginItemDefaultAppliedKey)
+        do {
+            if SMAppService.mainApp.status != .enabled {
+                try SMAppService.mainApp.register()
+            }
+        } catch {
+            NSLog("lifsaver: default launch-at-login registration failed: %@", "\(error)")
+        }
     }
 
     @objc private func quit() {
@@ -375,9 +419,19 @@ extension StatusItemController {
             return actionItem(title: title, action: #selector(checkForUpdatesClicked))
         case .updateAvailable(let title):
             return actionItem(title: title, action: #selector(downloadLatestInstaller))
-        case .launchAtLogin(let enabled):
-            let item = actionItem(title: "Start at Login", action: #selector(toggleLaunchAtLogin))
-            item.state = enabled ? .on : .off
+        case .moreOptions(let showStartAtLogin, let startAtLoginEnabled, let automaticUpdatesEnabled):
+            let item = NSMenuItem(title: "Settings", action: nil, keyEquivalent: "")
+            let submenu = NSMenu()
+            if showStartAtLogin {
+                let login = actionItem(title: "Start at Login", action: #selector(toggleLaunchAtLogin))
+                login.state = startAtLoginEnabled ? .on : .off
+                submenu.addItem(login)
+            }
+            let auto = actionItem(
+                title: "Automatically Check for Updates", action: #selector(toggleAutomaticUpdates))
+            auto.state = automaticUpdatesEnabled ? .on : .off
+            submenu.addItem(auto)
+            item.submenu = submenu
             return item
         case .saveReport(let title):
             return actionItem(title: title, action: #selector(saveReportClicked))

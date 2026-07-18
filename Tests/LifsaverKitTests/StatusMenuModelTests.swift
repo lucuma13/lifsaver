@@ -13,16 +13,22 @@ import Testing
         newerVersion: String? = nil,
         isCheckingForUpdates: Bool = false,
         showLaunchAtLogin: Bool = false,
-        launchAtLoginEnabled: Bool = false
+        launchAtLoginEnabled: Bool = false,
+        automaticUpdatesEnabled: Bool = true
     ) -> [StatusMenuModel.Entry] {
         StatusMenuModel.entries(
             state: state,
             newerVersion: newerVersion,
             isCheckingForUpdates: isCheckingForUpdates,
             showLaunchAtLogin: showLaunchAtLogin,
-            launchAtLoginEnabled: launchAtLoginEnabled
+            launchAtLoginEnabled: launchAtLoginEnabled,
+            automaticUpdatesEnabled: automaticUpdatesEnabled
         )
     }
+
+    /// The "Settings" submenu with the test defaults (unbundled, auto-check on).
+    private let moreOptions = StatusMenuModel.Entry.moreOptions(
+        showStartAtLogin: false, startAtLoginEnabled: false, automaticUpdatesEnabled: true)
 
     @Test func scanningShowsPlaceholder() {
         #expect(
@@ -31,6 +37,7 @@ import Testing
                 .separator,
                 .saveReport(title: "Send Diagnostic Report"),
                 .checkForUpdates(title: "Check for Updates"),
+                moreOptions,
                 .quit(title: "Quit"),
             ])
     }
@@ -42,6 +49,7 @@ import Testing
                 .separator,
                 .saveReport(title: "Send Diagnostic Report"),
                 .checkForUpdates(title: "Check for Updates"),
+                moreOptions,
                 .quit(title: "Quit"),
             ])
     }
@@ -53,6 +61,7 @@ import Testing
                 .separator,
                 .saveReport(title: "Send Diagnostic Report"),
                 .checkForUpdates(title: "Check for Updates"),
+                moreOptions,
                 .quit(title: "Quit"),
             ])
     }
@@ -65,6 +74,7 @@ import Testing
                 .separator,
                 .saveReport(title: "Send Diagnostic Report"),
                 .checkForUpdates(title: "Check for Updates"),
+                moreOptions,
                 .quit(title: "Quit"),
             ])
     }
@@ -80,6 +90,7 @@ import Testing
                 .separator,
                 .saveReport(title: "Send Diagnostic Report"),
                 .checkForUpdates(title: "Check for Updates"),
+                moreOptions,
                 .quit(title: "Quit"),
             ])
     }
@@ -104,11 +115,22 @@ import Testing
         #expect(!result.contains(.disabled("Checking for Updates…")))
     }
 
-    @Test func launchAtLoginShownOnlyWhenBundled() {
-        #expect(!entries(state: .scanning).contains(.launchAtLogin(enabled: false)))
+    @Test func moreOptionsHidesStartAtLoginWhenUnbundled() {
+        #expect(
+            entries(state: .scanning).contains(
+                .moreOptions(showStartAtLogin: false, startAtLoginEnabled: false, automaticUpdatesEnabled: true)))
 
         let bundled = entries(state: .scanning, showLaunchAtLogin: true, launchAtLoginEnabled: true)
-        #expect(bundled.contains(.launchAtLogin(enabled: true)))
+        #expect(
+            bundled.contains(
+                .moreOptions(showStartAtLogin: true, startAtLoginEnabled: true, automaticUpdatesEnabled: true)))
+    }
+
+    @Test func moreOptionsReflectsAutomaticUpdatesOptOut() {
+        let optedOut = entries(state: .scanning, automaticUpdatesEnabled: false)
+        #expect(
+            optedOut.contains(
+                .moreOptions(showStartAtLogin: false, startAtLoginEnabled: false, automaticUpdatesEnabled: false)))
     }
 
     /// Reports are most needed exactly when scans fail, so the item must
