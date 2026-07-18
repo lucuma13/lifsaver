@@ -76,7 +76,7 @@ public struct DiagnosticsReporter: Sendable {
         # lifsaver diagnostic report
 
         - generated: \(ISO8601DateFormatter().string(from: Date()))
-        - version: \(lifsaverVersion) (\(lifsaverInstallChannel()))
+        - version: \(lifsaverVersion)
         - macOS: \(ProcessInfo.processInfo.operatingSystemVersionString)
         - architecture: \(buildArchitecture)
 

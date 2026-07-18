@@ -1,7 +1,9 @@
 import Foundation
 
-/// Injectable output sink so callers (CLI, app, tests) decide where user-facing
-/// text lands. Mirrors stdout/stderr by default.
+/// Injectable output sink so callers decide where diagnostic text lands: the
+/// app routes it to its log, diagnostic reports capture it, and the root
+/// helper sends it to stderr. `.standard` mirrors stdout/stderr for tests and
+/// bare `swift run` development.
 public struct Console: Sendable {
     public var out: @Sendable (String) -> Void
     public var err: @Sendable (String) -> Void

@@ -1,16 +1,10 @@
-/// Wire format of the CLI's `--json` output, shared with the menu bar app so
-/// both ends agree on the schema by construction.
+/// Wire format the escalated helper prints on stdout, shared with the menu
+/// bar app so both ends agree on the schema by construction.
 ///
-/// Encoded with sorted keys and nil fields omitted:
+/// Encoded with sorted keys:
 ///
-///     {"action":"scan","targets":["disk4s1"]}
-///     {"action":"mount","mounted":[…],"results":{"fail":0,"ok":1,"skip":0},"targets":["disk4s1"]}
-public struct CLIReport: Codable, Sendable, Equatable {
-    public enum Action: String, Codable, Sendable {
-        case scan
-        case mount
-    }
-
+///     {"mounted":[…],"results":{"fail":0,"ok":1,"skip":0},"targets":["disk4s1"]}
+public struct MountReport: Codable, Sendable, Equatable {
     public struct Counts: Codable, Sendable, Equatable {
         public var ok: Int
         public var fail: Int
@@ -33,15 +27,11 @@ public struct CLIReport: Codable, Sendable, Equatable {
         }
     }
 
-    public var action: Action
     public var targets: [String]
-    /// Present for `action == .mount` only.
-    public var results: Counts?
-    /// Present for `action == .mount` only.
-    public var mounted: [MountedVolume]?
+    public var results: Counts
+    public var mounted: [MountedVolume]
 
-    public init(action: Action, targets: [String], results: Counts? = nil, mounted: [MountedVolume]? = nil) {
-        self.action = action
+    public init(targets: [String], results: Counts = .init(), mounted: [MountedVolume] = []) {
         self.targets = targets
         self.results = results
         self.mounted = mounted

@@ -28,37 +28,19 @@ final class FakeReleaseFetcher: LatestReleaseFetching {
     }
 }
 
-final class EmittedLines {
-    private let state = OSAllocatedUnfairLock(initialState: [String]())
-
-    var lines: [String] { state.withLock { $0 } }
-    var emit: @Sendable (String) -> Void {
-        { [state] line in state.withLock { $0.append(line) } }
-    }
-    var text: String { lines.joined(separator: "\n") }
-}
-
 private func makeChecker(
     currentVersion: String = "1.0.0",
     fetcher: FakeReleaseFetcher = FakeReleaseFetcher(tag: nil),
-    environment: [String: String] = [:],
-    interactive: Bool = true,
     cacheDirectory: URL,
-    emitted: EmittedLines = EmittedLines(),
-    checkInterval: TimeInterval = 24 * 60 * 60,
-    upgradeCommand: String = "brew upgrade --cask lifsaver"
+    checkInterval: TimeInterval = 24 * 60 * 60
 ) -> UpdateChecker {
     UpdateChecker(
         package: "lifsaver",
         repo: "lucuma13/lifsaver",
         currentVersion: currentVersion,
-        upgradeCommand: upgradeCommand,
         checkInterval: checkInterval,
         cacheDirectory: cacheDirectory,
-        fetcher: fetcher,
-        environment: environment,
-        stderrIsInteractive: { interactive },
-        emit: emitted.emit
+        fetcher: fetcher
     )
 }
 
@@ -69,10 +51,9 @@ private func temporaryDirectory() -> URL {
     return url
 }
 
-/// start() + notify() with a generous join window so the fetch always lands.
+/// start() and wait for any background fetch to land.
 private func check(_ checker: UpdateChecker) async {
-    checker.start()
-    await checker.notify(timeout: 5)
+    await checker.start()?.value
 }
 
 // ===========================================================================
@@ -125,91 +106,14 @@ private func check(_ checker: UpdateChecker) async {
 }
 
 // ===========================================================================
-// Upgrade-command channel detection
-// ===========================================================================
-
-@Suite struct UpgradeCommandTests {
-    @Test(arguments: ["/opt/homebrew/Caskroom/lifsaver", "/usr/local/Caskroom/lifsaver"])
-    func brewCommandWhenCaskroomExists(caskroom: String) {
-        let command = lifsaverUpgradeCommand(directoryExists: { $0 == caskroom })
-        #expect(command == "brew upgrade --cask lifsaver")
-    }
-
-    @Test func directDownloadLinkWithoutCaskroom() {
-        let command = lifsaverUpgradeCommand(directoryExists: { _ in false })
-        #expect(
-            command
-                == "open https://github.com/lucuma13/lifsaver/releases/download/v{latest}/lifsaver_installer_macos.pkg"
-        )
-    }
-
-    @Test func directoryOnDiskIsDetected() {
-        let directory = temporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: directory) }
-        #expect(directoryExistsOnDisk(directory.path))
-    }
-
-    @Test func missingPathIsNotADirectory() {
-        let missing = temporaryDirectory().appendingPathComponent("nope")
-        #expect(!directoryExistsOnDisk(missing.path))
-    }
-
-    @Test func plainFileIsNotMistakenForACaskInstall() throws {
-        // A Caskroom path occupied by a file — not a directory — must not be
-        // read as a Homebrew install, or we would suggest `brew upgrade` to
-        // someone who installed from the .pkg.
-        let directory = temporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let file = directory.appendingPathComponent("lifsaver")
-        try Data("not a directory".utf8).write(to: file)
-        #expect(!directoryExistsOnDisk(file.path))
-    }
-
-    @Test func notifySubstitutesLatestVersionIntoCommand() async {
-        let emitted = EmittedLines()
-        let checker = makeChecker(
-            fetcher: FakeReleaseFetcher(tag: "v2.1.0"),
-            cacheDirectory: temporaryDirectory(),
-            emitted: emitted,
-            upgradeCommand: lifsaverUpgradeCommand(directoryExists: { _ in false })
-        )
-        await check(checker)
-        #expect(
-            emitted.text.contains(
-                "open https://github.com/lucuma13/lifsaver/releases/download/v2.1.0/lifsaver_installer_macos.pkg"
-            ))
-    }
-}
-
-// ===========================================================================
-// Enablement / opt-outs
+// Enablement
 // ===========================================================================
 
 @Suite struct UpdateCheckerEnablementTests {
-    @Test(arguments: ["LIFSAVER_NO_UPDATE_CHECK", "NO_UPDATE_CHECK", "CI"])
-    func disabledByEnvVar(variable: String) async {
-        let fetcher = FakeReleaseFetcher(tag: "v9.9.9")
-        let emitted = EmittedLines()
-        let checker = makeChecker(
-            fetcher: fetcher, environment: [variable: "1"],
-            cacheDirectory: temporaryDirectory(), emitted: emitted)
-        await check(checker)
-        #expect(fetcher.fetchCount == 0)
-        #expect(emitted.lines.isEmpty)
-    }
-
     @Test func disabledForUnparsableVersion() async {
         let fetcher = FakeReleaseFetcher(tag: "v9.9.9")
         let checker = makeChecker(
             currentVersion: "unknown", fetcher: fetcher, cacheDirectory: temporaryDirectory())
-        await check(checker)
-        #expect(fetcher.fetchCount == 0)
-    }
-
-    @Test func disabledWhenStderrNotATTY() async {
-        let fetcher = FakeReleaseFetcher(tag: "v9.9.9")
-        let checker = makeChecker(
-            fetcher: fetcher, interactive: false, cacheDirectory: temporaryDirectory())
         await check(checker)
         #expect(fetcher.fetchCount == 0)
     }
@@ -229,11 +133,10 @@ private func check(_ checker: UpdateChecker) async {
             .write(to: directory.appendingPathComponent("update-check.json"))
 
         let fetcher = FakeReleaseFetcher(tag: "v1.0.0")
-        let emitted = EmittedLines()
-        let checker = makeChecker(fetcher: fetcher, cacheDirectory: directory, emitted: emitted)
+        let checker = makeChecker(fetcher: fetcher, cacheDirectory: directory)
         await check(checker)
         #expect(fetcher.fetchCount == 0)
-        #expect(emitted.text.contains("Update available"))
+        #expect(checker.knownNewerVersion() == "9.9.9")
     }
 
     @Test func staleCacheTriggersFetchAndRewrite() async throws {
@@ -245,11 +148,10 @@ private func check(_ checker: UpdateChecker) async {
         try JSONSerialization.data(withJSONObject: stale).write(to: cacheFile)
 
         let fetcher = FakeReleaseFetcher(tag: "v9.9.9")
-        let emitted = EmittedLines()
-        let checker = makeChecker(fetcher: fetcher, cacheDirectory: directory, emitted: emitted)
+        let checker = makeChecker(fetcher: fetcher, cacheDirectory: directory)
         await check(checker)
         #expect(fetcher.fetchCount == 1)
-        #expect(emitted.text.contains("Update available"))
+        #expect(checker.knownNewerVersion() == "9.9.9")
 
         let rewritten = try JSONSerialization.jsonObject(with: Data(contentsOf: cacheFile))
         let object = try #require(rewritten as? [String: Any])
@@ -274,94 +176,41 @@ private func check(_ checker: UpdateChecker) async {
             .write(to: directory.appendingPathComponent("update-check.json"))
 
         let fetcher = FakeReleaseFetcher(tag: "v9.9.9")
-        let emitted = EmittedLines()
-        let checker = makeChecker(fetcher: fetcher, cacheDirectory: directory, emitted: emitted)
+        let checker = makeChecker(fetcher: fetcher, cacheDirectory: directory)
         await check(checker)
         #expect(fetcher.fetchCount == 1)
-        #expect(emitted.text.contains("Update available"))
+        #expect(checker.knownNewerVersion() == "9.9.9")
     }
 
     @Test func writeCacheFailureIsSilent() async {
         // A cache directory that cannot be created must not break the check.
         let impossible = URL(fileURLWithPath: "/dev/null/nope")
-        let emitted = EmittedLines()
         let checker = makeChecker(
-            fetcher: FakeReleaseFetcher(tag: "v9.9.9"), cacheDirectory: impossible,
-            emitted: emitted)
+            fetcher: FakeReleaseFetcher(tag: "v9.9.9"), cacheDirectory: impossible)
         await check(checker)
-        #expect(emitted.text.contains("Update available"))
+        #expect(checker.knownNewerVersion() == "9.9.9")
     }
 }
 
 // ===========================================================================
-// Notification behaviour
+// Check behaviour
 // ===========================================================================
 
-@Suite struct UpdateCheckerNotifyTests {
-    @Test func fetchQueriesAndNotifies() async {
+@Suite struct UpdateCheckerCheckTests {
+    @Test func fetchQueriesAndRecordsNewerVersion() async {
         let fetcher = FakeReleaseFetcher(tag: "v9.9.9")
-        let emitted = EmittedLines()
-        let checker = makeChecker(
-            fetcher: fetcher, cacheDirectory: temporaryDirectory(), emitted: emitted)
+        let checker = makeChecker(fetcher: fetcher, cacheDirectory: temporaryDirectory())
         await check(checker)
         #expect(fetcher.fetchCount == 1)
         #expect(fetcher.lastUserAgent == "lifsaver/1.0.0 (update-check)")
-        #expect(emitted.text.contains("Update available! Run: "))
-        #expect(emitted.text.contains("brew upgrade --cask lifsaver"))
-    }
-
-    @Test func noHintWhenUpToDate() async {
-        let emitted = EmittedLines()
-        let checker = makeChecker(
-            fetcher: FakeReleaseFetcher(tag: "v1.0.0"),
-            cacheDirectory: temporaryDirectory(), emitted: emitted)
-        await check(checker)
-        #expect(emitted.lines.isEmpty)
+        #expect(checker.knownNewerVersion() == "9.9.9")
     }
 
     @Test func networkFailureIsSilent() async {
-        let emitted = EmittedLines()
         let checker = makeChecker(
-            fetcher: FakeReleaseFetcher(tag: nil),
-            cacheDirectory: temporaryDirectory(), emitted: emitted)
+            fetcher: FakeReleaseFetcher(tag: nil), cacheDirectory: temporaryDirectory())
         await check(checker)
-        #expect(emitted.lines.isEmpty)
-    }
-
-    @Test func notifyWithoutStartStaysSilent() async {
-        // notify() must not hang or hint when start() was never called.
-        let emitted = EmittedLines()
-        let checker = makeChecker(
-            fetcher: FakeReleaseFetcher(tag: "v9.9.9"),
-            cacheDirectory: temporaryDirectory(), emitted: emitted)
-        await checker.notify(timeout: 0.05)
-        #expect(emitted.lines.isEmpty)
-    }
-
-    @Test func hintIsColouredWhenStderrSupportsIt() async {
-        let emitted = EmittedLines()
-        let checker = makeChecker(
-            fetcher: FakeReleaseFetcher(tag: "v9.9.9"),
-            cacheDirectory: temporaryDirectory(), emitted: emitted)
-        await check(checker)
-        #expect(emitted.text.contains("\u{1B}[38;5;208m"))
-        #expect(emitted.text.contains("\u{1B}[1m"))
-    }
-
-    @Test(
-        arguments: [
-            (["NO_COLOR": "1"], false),
-            (["FORCE_COLOR": "1"], true),
-            (["NO_COLOR": "1", "FORCE_COLOR": "1"], false),  // NO_COLOR wins
-            ([:], true),  // interactive default
-        ] as [([String: String], Bool)])
-    func colourFollowsNoColorAndForceColor(environment: [String: String], coloured: Bool) async {
-        let emitted = EmittedLines()
-        let checker = makeChecker(
-            fetcher: FakeReleaseFetcher(tag: "v9.9.9"), environment: environment,
-            cacheDirectory: temporaryDirectory(), emitted: emitted)
-        await check(checker)
-        #expect(emitted.text.contains("\u{1B}[") == coloured)
+        #expect(checker.knownNewerVersion() == nil)
     }
 
     @Test func knownNewerVersionForMenuSurface() async {
@@ -376,14 +225,13 @@ private func check(_ checker: UpdateChecker) async {
         #expect(upToDate.knownNewerVersion() == nil)
     }
 
-    @Test func checkNowFetchesEvenWhenOptedOut() async {
-        // The manual GUI check ignores the CI/opt-out gates that silence the
-        // passive CLI hint — the user explicitly asked.
+    @Test func checkNowFetchesEvenForDevBuilds() async {
+        // The manual GUI check ignores the version gate that silences the
+        // passive launch check — the user explicitly asked.
         let fetcher = FakeReleaseFetcher(tag: "v9.9.9")
         let checker = makeChecker(
-            fetcher: fetcher, environment: ["CI": "1"], cacheDirectory: temporaryDirectory())
+            currentVersion: "unknown", fetcher: fetcher, cacheDirectory: temporaryDirectory())
         await checker.checkNow()
         #expect(fetcher.fetchCount == 1)
-        #expect(checker.knownNewerVersion() == "9.9.9")
     }
 }

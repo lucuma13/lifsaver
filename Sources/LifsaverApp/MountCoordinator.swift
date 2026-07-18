@@ -5,12 +5,12 @@ import LifsaverCore
 ///
 /// `diskutil mount` mounts external removable media as the logged-in user, so
 /// the first pass runs in-process with no privileges and no prompt. Only if it
-/// leaves a volume unmounted — the raw `/sbin/mount_*` fallback needs root — is
-/// the bundled CLI re-run under the admin dialog, which rescans as root and
-/// picks up whatever is left.
+/// leaves a volume unmounted — the raw `/sbin/mount_*` fallback needs root —
+/// does the app re-run its own binary under the admin dialog, which rescans as
+/// root and picks up whatever is left.
 enum MountCoordinator {
     struct Outcome: Sendable {
-        var unprivileged: CLIReport.Counts
+        var unprivileged: MountReport.Counts
         /// nil when the first pass left nothing for root to do — the case where
         /// the user is never asked for a password at all.
         var escalated: EscalatedMountOutcome?
@@ -35,9 +35,9 @@ enum MountCoordinator {
     /// root", not "impossible".
     private static func mountUnprivileged(
         _ targets: [String], scanner: DiskScanner
-    ) async -> CLIReport.Counts {
+    ) async -> MountReport.Counts {
         let mounter = Mounter(scanner: scanner, allowRawFallback: false)
-        var counts = CLIReport.Counts()
+        var counts = MountReport.Counts()
         for devId in targets {
             switch await mounter.execute(devId) {
             case .ok:

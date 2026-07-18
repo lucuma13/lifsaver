@@ -79,7 +79,7 @@ public struct Mounter: Sendable {
         // Never fight a repair in progress — wait for macOS to finish or bail out.
         if await scanner.isFsckActive(devId) {
             console.out("  SKIPPED — macOS is running a consistency check (fsck) on /dev/\(devId).")
-            console.out("  Let it finish and re-run; mounting mid-check risks corrupting the card.")
+            console.out("  Let it finish and mount again from the menu; mounting mid-check risks corrupting the card.")
             return .skip
         }
 

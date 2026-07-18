@@ -61,7 +61,7 @@ public struct DiskScanner: Sendable {
     public init(
         runner: any ProcessRunning,
         mountTable: any MountTableReading = LiveMountTable(),
-        console: Console = .standard,
+        console: Console,
         verbose: Bool = false
     ) {
         self.runner = runner
@@ -236,8 +236,7 @@ public struct DiskScanner: Sendable {
     }
 
     /// Content gate for a single partition, with a logged reason for every
-    /// rejection so `--verbose` runs and diagnostic reports can replay the
-    /// decision.
+    /// rejection so diagnostic reports can replay the decision.
     private func isCandidatePartition(_ partition: [String: Any]) -> Bool {
         let contentType = partition["Content"] as? String ?? ""
         let devId = partition["DeviceIdentifier"] as? String ?? ""

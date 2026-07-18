@@ -3,22 +3,14 @@ import os
 
 // Portable GitHub-releases update checker.
 //
-// Checks the repository's latest release for a newer version and prints an
-// upgrade hint to stderr:
-//
-//     Update available! Run: brew upgrade --cask lifsaver
+// Checks the repository's latest release for a newer version and surfaces it
+// through knownNewerVersion() (the app's "Update to version …" menu item).
 //
 // Behaviour:
-//   - never crashes or slows down the host CLI: every failure is silent,
-//     and the network fetch runs in a background task that notify() waits
-//     on only briefly
+//   - never crashes or slows down the host process: every failure is silent,
+//     and the network fetch runs in a background task
 //   - at most one API request per `checkInterval` (result cached
 //     private-to-the-user in ~/Library/Caches/<package>)
-//   - `{latest}` in `upgradeCommand` is replaced with the newest known
-//     version when the hint is printed (for direct download links)
-//   - hints only appear on interactive runs (stderr is a tty)
-//   - colour follows the NO_COLOR / FORCE_COLOR conventions (no-color.org)
-//   - opt out with LIFSAVER_NO_UPDATE_CHECK=1, NO_UPDATE_CHECK=1, or in CI
 
 // ---------------------------------------------------------------------------
 // Version comparison
@@ -178,36 +170,23 @@ public final class UpdateChecker: Sendable {
     let package: String
     let repo: String
     let currentVersion: String
-    let upgradeCommand: String
     let checkInterval: TimeInterval
     let cacheFile: URL
     let fetcher: any LatestReleaseFetching
-    let environment: [String: String]
-    let stderrIsInteractive: @Sendable () -> Bool
-    let emit: @Sendable (String) -> Void
 
     private let latestBox = OSAllocatedUnfairLock<String?>(initialState: nil)
-    /// Finishes when the check settles (fetch done, cache hit, or disabled),
-    /// so notify() can wait for an in-flight fetch with a hard cap.
-    private let fetchSettled: AsyncStream<Void>
-    private let fetchSettledContinuation: AsyncStream<Void>.Continuation
 
     public init(
         package: String,
         repo: String,
         currentVersion: String,
-        upgradeCommand: String,
         checkInterval: TimeInterval = 24 * 60 * 60,
         cacheDirectory: URL? = nil,
-        fetcher: any LatestReleaseFetching = GitHubReleaseFetcher(),
-        environment: [String: String] = ProcessInfo.processInfo.environment,
-        stderrIsInteractive: @escaping @Sendable () -> Bool = { isatty(STDERR_FILENO) != 0 },
-        emit: (@Sendable (String) -> Void)? = nil
+        fetcher: any LatestReleaseFetching = GitHubReleaseFetcher()
     ) {
         self.package = package
         self.repo = repo
         self.currentVersion = currentVersion
-        self.upgradeCommand = upgradeCommand
         self.checkInterval = checkInterval
         let cacheBase =
             cacheDirectory
@@ -216,27 +195,21 @@ public final class UpdateChecker: Sendable {
             .appendingPathComponent(package)
         cacheFile = cacheBase.appendingPathComponent("update-check.json")
         self.fetcher = fetcher
-        self.environment = environment
-        self.stderrIsInteractive = stderrIsInteractive
-        self.emit = emit ?? { FileHandle.standardError.write(Data(($0 + "\n").utf8)) }
-        (fetchSettled, fetchSettledContinuation) = AsyncStream.makeStream(of: Void.self)
     }
 
     // --- lifecycle ---------------------------------------------------------
 
-    /// Begin the check. Instant: either reads a fresh cache or forks a fetch.
-    public func start() {
-        guard enabled() else {
-            fetchSettledContinuation.finish()
-            return
-        }
+    /// Begin the check. Instant: either reads a fresh cache or forks a fetch,
+    /// returning the fetch task so tests can await it landing.
+    @discardableResult
+    public func start() -> Task<Void, Never>? {
+        // Dev build / unknown version: cannot compare, stay quiet.
+        guard SemanticVersion(currentVersion) != nil else { return nil }
         if let cached = readCache() {
             latestBox.withLock { $0 = cached }
-            fetchSettledContinuation.finish()
-            return
+            return nil
         }
-        Task(priority: .utility) { [self] in
-            defer { fetchSettledContinuation.finish() }
+        return Task(priority: .utility) { [self] in
             guard
                 let tag = await fetcher.fetchLatestTag(
                     repo: repo,
@@ -250,35 +223,6 @@ public final class UpdateChecker: Sendable {
         }
     }
 
-    /// Print the upgrade hint to stderr if a newer release is known.
-    ///
-    /// Waits at most `timeout` seconds for an in-flight fetch — long enough
-    /// for a warm connection, short enough to be imperceptible. A fetch that
-    /// misses the window is simply not reported this run.
-    public func notify(timeout: TimeInterval = 0.25) async {
-        // Race the settle signal against a deadline; both branches respond
-        // to cancellation, so the group ends as soon as either finishes.
-        await withTaskGroup(of: Void.self) { group in
-            group.addTask { [fetchSettled] in
-                for await _ in fetchSettled {}
-            }
-            group.addTask {
-                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-            }
-            await group.next()
-            group.cancelAll()
-        }
-
-        guard let known = latestBox.withLock({ $0 }), isNewer(latest: known, current: currentVersion) else { return }
-        let command = upgradeCommand.replacingOccurrences(of: "{latest}", with: known)
-        if stderrSupportsColor() {
-            // BOLD stacks on ORANGE, so the command renders bold orange.
-            emit("\u{1B}[38;5;208mUpdate available! Run: \u{1B}[1m\(command)\u{1B}[0m")
-        } else {
-            emit("Update available! Run: \(command)")
-        }
-    }
-
     /// The newest known release version, from cache or a finished fetch —
     /// nil when up to date or unknown. For GUI surfaces (menu items).
     public func knownNewerVersion() -> String? {
@@ -288,8 +232,8 @@ public final class UpdateChecker: Sendable {
         return known
     }
 
-    /// Force a fresh check now, ignoring the cache and the interactive/opt-out
-    /// gates that only govern the passive CLI hint — the user asked for this.
+    /// Force a fresh check now, ignoring the cache and the version gate that
+    /// only governs the passive launch check — the user asked for this.
     /// Refreshes the known version and cache; the result is then reflected by
     /// `knownNewerVersion()`. For the GUI "Check for Updates" menu action.
     public func checkNow() async {
@@ -306,26 +250,6 @@ public final class UpdateChecker: Sendable {
     }
 
     // --- internals ---------------------------------------------------------
-
-    func enabled() -> Bool {
-        let prefix = package.uppercased().map { $0.isLetter || $0.isNumber ? $0 : "_" }
-        let optOuts = ["\(String(prefix))_NO_UPDATE_CHECK", "NO_UPDATE_CHECK", "CI"]
-        // Any non-empty value opts out — including "0" and "false" — matching
-        // how CI-style flags are conventionally treated.
-        if optOuts.contains(where: { !(environment[$0] ?? "").isEmpty }) {
-            return false
-        }
-        if SemanticVersion(currentVersion) == nil {  // dev build / unknown version
-            return false
-        }
-        return stderrIsInteractive()
-    }
-
-    func stderrSupportsColor() -> Bool {
-        if !(environment["NO_COLOR"] ?? "").isEmpty { return false }
-        if !(environment["FORCE_COLOR"] ?? "").isEmpty { return true }
-        return stderrIsInteractive()
-    }
 
     func readCache() -> String? {
         guard

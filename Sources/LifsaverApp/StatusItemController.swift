@@ -28,11 +28,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let updateChecker = UpdateChecker(
         package: "lifsaver",
         repo: "lucuma13/lifsaver",
-        currentVersion: lifsaverVersion,
-        upgradeCommand: lifsaverUpgradeCommand(),
-        // The app has no meaningful tty; the checker is used only as a data
-        // source for the "Update available" menu item.
-        stderrIsInteractive: { true }
+        currentVersion: lifsaverVersion
     )
 
     /// Invalidates in-flight scans when a newer one starts.
@@ -314,7 +310,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     /// Downloads the latest installer directly rather than sending the user to
-    /// the releases page. The asset name is frozen and matches the CLI's hint.
+    /// the releases page. The asset name is frozen — already-shipped versions
+    /// point at it.
     @objc private func downloadLatestInstaller() {
         let url = URL(
             string:

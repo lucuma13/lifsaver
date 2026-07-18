@@ -35,10 +35,10 @@ import Testing
             ])
     }
 
-    @Test func failureShowsTerminalHint() {
+    @Test func failureShowsDisabledNotice() {
         #expect(
             entries(state: .failed) == [
-                .disabled("Scan failed — try `lifsaver --verbose` in Terminal"),
+                .disabled("Scan failed"),
                 .separator,
                 .saveReport(title: "Send Diagnostic Report"),
                 .checkForUpdates(title: "Check for Updates"),
@@ -144,12 +144,6 @@ import Testing
                 == "mount attempt finished: 1 mounted, 2 failed, 3 skipped")
     }
 
-    @Test func missingCLIIsExplicit() {
-        #expect(
-            StatusMenuModel.mountEventLine(for: .cliNotFound)
-                == "mount attempt failed: bundled CLI missing")
-    }
-
     @Test func unprivilegedPassRecordsWhatRootWasNeededFor() {
         #expect(
             StatusMenuModel.unprivilegedMountEventLine(for: .init(ok: 1, fail: 2, skip: 3))
@@ -163,7 +157,7 @@ import Testing
 
 @Suite struct CombinedOutcomeTests {
     private func combined(
-        _ unprivileged: CLIReport.Counts, _ escalated: EscalatedMountOutcome?
+        _ unprivileged: MountReport.Counts, _ escalated: EscalatedMountOutcome?
     ) -> EscalatedMountOutcome {
         StatusMenuModel.combinedOutcome(unprivileged: unprivileged, escalated: escalated)
     }
@@ -209,10 +203,6 @@ import Testing
             combined(.init(ok: 1, fail: 2), .error("osascript exploded"))
                 == .report(.init(ok: 1, fail: 2)))
     }
-
-    @Test func missingCLIAfterPartialSuccessKeepsBothHalves() {
-        #expect(combined(.init(ok: 1, fail: 1), .cliNotFound) == .report(.init(ok: 1, fail: 1)))
-    }
 }
 
 // ===========================================================================
@@ -242,14 +232,8 @@ import Testing
         #expect(body(for: .cancelled) == nil)
     }
 
-    @Test func missingCLIAsksForReinstall() {
-        #expect(body(for: .cliNotFound) == "Bundled CLI is missing — please reinstall the app.")
-    }
-
     @Test func anyFailureWinsOverSuccesses() {
-        #expect(
-            body(for: .report(.init(ok: 2, fail: 1, skip: 0)))
-                == "Mount failed for 1 volume(s) — try `lifsaver --verbose` in Terminal.")
+        #expect(body(for: .report(.init(ok: 2, fail: 1, skip: 0))) == "Mount failed")
     }
 
     @Test func singleSuccessUsesSingularNoun() {
@@ -266,8 +250,8 @@ import Testing
                 == "Nothing mounted — volumes were skipped (already mounted or being checked).")
     }
 
-    @Test func errorSuggestsVerboseRun() {
-        #expect(body(for: .error("osascript exploded")) == "Mount failed — try `lifsaver --verbose` in Terminal.")
+    @Test func errorReportsPlainFailure() {
+        #expect(body(for: .error("osascript exploded")) == "Mount failed")
     }
 }
 

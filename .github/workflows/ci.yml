@@ -124,7 +124,7 @@ jobs:
         run: |
           ./scripts/release/bundle_app.sh
           plutil -lint dist/Lifsaver.app/Contents/Info.plist
-          test -x dist/Lifsaver.app/Contents/Helpers/lifsaver
+          test -x dist/Lifsaver.app/Contents/MacOS/Lifsaver
       - name: Package installer
         run: ./scripts/release/make_pkg.sh
       - name: Upload installer for per-OS install tests
@@ -169,16 +169,15 @@ jobs:
           path: dist
       - name: Install pkg
         run: sudo installer -pkg dist/lifsaver_installer_macos.pkg -target /
-      - name: Verify installed layout, signature, and CLI
+      - name: Verify installed layout, signature, and version
         run: |
           echo "→ $(sw_vers -productVersion) $(uname -m)"
           test -d /Applications/Lifsaver.app
-          test -L /usr/local/bin/lifsaver
           /usr/bin/codesign --verify --strict /Applications/Lifsaver.app
           VERSION="$(./scripts/version.sh)"
-          INSTALLED="$(/usr/local/bin/lifsaver --version)"
+          INSTALLED="$(plutil -extract CFBundleShortVersionString raw /Applications/Lifsaver.app/Contents/Info.plist)"
           if [ "$INSTALLED" != "$VERSION" ]; then
-            echo "ERROR: installed CLI reports $INSTALLED, expected $VERSION" >&2
+            echo "ERROR: installed app reports $INSTALLED, expected $VERSION" >&2
             exit 1
           fi
       - name: Launch app and verify it stays up

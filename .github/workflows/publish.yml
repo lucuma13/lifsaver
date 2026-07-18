@@ -120,15 +120,14 @@ jobs:
         run: |
           brew tap lucuma13/dit
           brew install --cask lucuma13/dit/lifsaver
-      - name: Smoke test CLI and app bundle
+      - name: Smoke test
         env:
           VERSION: ${{ needs.build-and-upload.outputs.version }}
         run: |
-          echo "→ lifsaver --version"
-          INSTALLED="$(lifsaver --version)"
-          if [ "$INSTALLED" != "$VERSION" ]; then
-            echo "ERROR: installed CLI reports $INSTALLED, expected $VERSION" >&2
-            exit 1
-          fi
           test -d /Applications/Lifsaver.app
           /usr/bin/codesign --verify --strict /Applications/Lifsaver.app
+          INSTALLED="$(plutil -extract CFBundleShortVersionString raw /Applications/Lifsaver.app/Contents/Info.plist)"
+          if [ "$INSTALLED" != "$VERSION" ]; then
+            echo "ERROR: installed app reports $INSTALLED, expected $VERSION" >&2
+            exit 1
+          fi

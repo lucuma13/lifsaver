@@ -86,8 +86,7 @@ private struct StubError: Error {}
 }
 
 // ===========================================================================
-// Support email (asserted via fragments — a full literal anywhere in the
-// repo would hand scrapers exactly what the runtime assembly hides)
+// Support email
 // ===========================================================================
 
 @Suite struct SupportEmailTests {
@@ -107,19 +106,5 @@ private struct StubError: Error {}
         #expect(absolute.contains("lifsaver-report-x.txt"))
         let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
         #expect(components.path == lifsaverSupportEmail)
-    }
-}
-
-// ===========================================================================
-// Install channel
-// ===========================================================================
-
-@Suite struct InstallChannelTests {
-    @Test func caskroomPresenceMeansHomebrew() {
-        #expect(lifsaverInstallChannel(directoryExists: { _ in true }) == "Homebrew cask")
-    }
-
-    @Test func noCaskroomMeansInstallerOrLocalBuild() {
-        #expect(lifsaverInstallChannel(directoryExists: { _ in false }) == "installer package or local build")
     }
 }

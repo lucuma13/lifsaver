@@ -1,9 +1,8 @@
-/// Result of the menu bar app's escalated CLI mount, decoupled from the
+/// Result of the menu bar app's escalated mount pass, decoupled from the
 /// escalation mechanism so presentation logic on top of it is testable here.
 public enum EscalatedMountOutcome: Equatable, Sendable {
-    case report(CLIReport.Counts)
+    case report(MountReport.Counts)
     case cancelled
-    case cliNotFound
     case error(String)
 }
 
@@ -95,7 +94,7 @@ public enum StatusMenuModel {
         case .scanning:
             entries.append(.disabled("Scanning…"))
         case .failed:
-            entries.append(.disabled("Scan failed — try `lifsaver --verbose` in Terminal"))
+            entries.append(.disabled("Scan failed"))
         case .results(let targets) where targets.isEmpty:
             entries.append(.disabled("No stalled volumes detected"))
         case .results(let targets):
@@ -141,8 +140,6 @@ public enum StatusMenuModel {
         switch outcome {
         case .cancelled:
             return "mount attempt cancelled at the password dialog"
-        case .cliNotFound:
-            return "mount attempt failed: bundled CLI missing"
         case .error(let message):
             return "mount attempt failed: \(message)"
         case .report(let counts):
@@ -153,7 +150,7 @@ public enum StatusMenuModel {
     /// One line for the diagnostic report's event log, recording what the
     /// unprivileged first pass managed on its own. `fail` here is not a real
     /// failure — those volumes go on to the escalated pass.
-    public static func unprivilegedMountEventLine(for counts: CLIReport.Counts) -> String {
+    public static func unprivilegedMountEventLine(for counts: MountReport.Counts) -> String {
         "unprivileged mount pass: \(counts.ok) mounted, \(counts.fail) need elevation, \(counts.skip) skipped"
     }
 
@@ -167,7 +164,7 @@ public enum StatusMenuModel {
     ///
     /// `escalated` is nil when the first pass left nothing for root to do.
     public static func combinedOutcome(
-        unprivileged: CLIReport.Counts,
+        unprivileged: MountReport.Counts,
         escalated: EscalatedMountOutcome?
     ) -> EscalatedMountOutcome {
         guard let escalated else { return .report(unprivileged) }
@@ -179,7 +176,7 @@ public enum StatusMenuModel {
             // it; whatever mounted before the prompt still counts.
             guard unprivileged.ok > 0 else { return .cancelled }
             return .report(.init(ok: unprivileged.ok))
-        case .cliNotFound, .error:
+        case .error:
             // The escalation never ran, so the first pass's failures stand.
             guard unprivileged.ok > 0 else { return escalated }
             return .report(.init(ok: unprivileged.ok, fail: unprivileged.fail))
@@ -192,11 +189,9 @@ public enum StatusMenuModel {
         switch outcome {
         case .cancelled:
             return nil
-        case .cliNotFound:
-            return "Bundled CLI is missing — please reinstall the app."
         case .report(let counts):
             if counts.fail > 0 {
-                return "Mount failed for \(counts.fail) volume(s) — try `lifsaver --verbose` in Terminal."
+                return "Mount failed"
             }
             if counts.ok > 0 {
                 let noun = counts.ok == 1 ? "volume" : "volumes"
@@ -204,7 +199,7 @@ public enum StatusMenuModel {
             }
             return "Nothing mounted — volumes were skipped (already mounted or being checked)."
         case .error:
-            return "Mount failed — try `lifsaver --verbose` in Terminal."
+            return "Mount failed"
         }
     }
 }
