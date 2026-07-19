@@ -8,7 +8,6 @@ cask "lifsaver" do
   homepage "https://github.com/lucuma13/lifsaver"
 
   app "Lifsaver.app"
-  binary "#{appdir}/Lifsaver.app/Contents/Helpers/lifsaver", target: "lifsaver"
 
   postflight do
     if OS.mac? && File.exist?("#{appdir}/Lifsaver.app")

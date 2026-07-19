@@ -2,31 +2,17 @@
 import PackageDescription
 
 let package = Package(
-    name: "lifsaver",
+    name: "Lifsaver",
     platforms: [.macOS(.v13)],
-    dependencies: [
-        .package(url: "https://github.com/apple/swift-argument-parser", from: "1.5.0")
-    ],
     targets: [
-        .target(name: "LifsaverCore"),
+        .target(name: "LifsaverKit"),
         .executableTarget(
-            name: "lifsaver",
-            dependencies: [
-                "LifsaverCore",
-                .product(name: "ArgumentParser", package: "swift-argument-parser"),
-            ]
-        ),
-        .executableTarget(
-            name: "LifsaverApp",
-            dependencies: ["LifsaverCore"]
+            name: "Lifsaver",
+            dependencies: ["LifsaverKit"]
         ),
         .testTarget(
-            name: "LifsaverCoreTests",
-            dependencies: ["LifsaverCore"]
-        ),
-        .testTarget(
-            name: "LifsaverCLITests",
-            dependencies: ["lifsaver"]
+            name: "LifsaverKitTests",
+            dependencies: ["LifsaverKit"]
         ),
     ]
 )

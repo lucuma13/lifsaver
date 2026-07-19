@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build universal (arm64 + x86_64) release binaries for the app and CLI.
+# Build the universal (arm64 + x86_64) release binary.
 
 set -euo pipefail
 
@@ -11,13 +11,11 @@ swift build -c release --arch x86_64
 
 OUT="$ROOT/.build/universal-release"
 mkdir -p "$OUT"
-for product in lifsaver LifsaverApp; do
-  lipo -create \
-    ".build/arm64-apple-macosx/release/$product" \
-    ".build/x86_64-apple-macosx/release/$product" \
-    -output "$OUT/$product"
-  printf '%s: ' "$product"
-  lipo -archs "$OUT/$product"
-done
+lipo -create \
+  ".build/arm64-apple-macosx/release/Lifsaver" \
+  ".build/x86_64-apple-macosx/release/Lifsaver" \
+  -output "$OUT/Lifsaver"
+printf 'Lifsaver: '
+lipo -archs "$OUT/Lifsaver"
 
 echo "Products: $OUT"

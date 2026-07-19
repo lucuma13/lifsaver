@@ -19,11 +19,8 @@ rm -rf "$PKGROOT"
 mkdir -p "$PKGROOT/Applications"
 cp -R "$APP" "$PKGROOT/Applications/"
 
-chmod 755 scripts/release/installer-scripts/postinstall
-
 pkgbuild \
   --root "$PKGROOT" \
-  --scripts scripts/release/installer-scripts \
   --identifier com.lucuma13.lifsaver \
   --version "$VERSION" \
   --install-location / \

@@ -7,7 +7,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-VERSION="$(sed -n 's/^public let lifsaverVersion = "\(.*\)"$/\1/p' "$ROOT/Sources/LifsaverCore/Version.swift")"
+VERSION="$(sed -n 's/^public let lifsaverVersion = "\(.*\)"$/\1/p' "$ROOT/Sources/LifsaverKit/Version.swift")"
 [ -n "$VERSION" ] || {
   echo "ERROR: could not read version from Version.swift" >&2
   exit 1
