@@ -1,16 +1,21 @@
 import AppKit
 import LifsaverKit
 import ServiceManagement
+import os
 
 /// Everything the scanner and mounter say, kept live so diagnostic reports
 /// carry what happened during past scans and mount attempts.
 private let liveLog = ConsoleLog()
 
-/// Diagnostics from the core land in the log.
+/// Core diagnostics also stream to the unified log, where `log stream
+/// --predicate 'subsystem == "app.lifsaver"'` and Console.app can follow them
+/// live. `out` is informational; `err` carries the scanner/mounter's failure
+/// stream, so it logs at error level.
+private let logger = Logger(subsystem: "app.lifsaver", category: "core")
 private let quietConsole = liveLog.console(
     alsoTo: Console(
-        out: { NSLog("lifsaver: %@", $0) },
-        err: { NSLog("lifsaver: %@", $0) }
+        out: { logger.info("\($0, privacy: .public)") },
+        err: { logger.error("\($0, privacy: .public)") }
     ))
 
 /// diskarbitrationd can keep fsck running for a while on a dirty card; while
@@ -58,7 +63,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var lastScan: StatusMenuModel.ScanState?
     private var stalledWatch = StalledWatchState()
     private var diskWatcher: DiskActivityWatcher?
+    /// Re-entrancy guard for the manual check: the menu closes on click, so a
+    /// user could reopen it and click again while a fetch is still in flight.
     private var checkingForUpdates = false
+    /// The "Checking for Updates…" spinner, shown only if a manual check
+    /// outlasts its grace period. nil when no check is slow enough to warrant it.
+    private var updateProgress: UpdateProgressWindow?
     private var menuIsOpen = false
     /// SMAppService.status is a blocking launchd XPC round-trip; query it when
     /// the menu opens or the toggle flips, not on every rebuild.
@@ -252,7 +262,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let entries = StatusMenuModel.entries(
             state: lastScan ?? .scanning,
             newerVersion: updateChecker.knownNewerVersion(),
-            isCheckingForUpdates: checkingForUpdates,
             showLaunchAtLogin: Bundle.main.bundleIdentifier != nil,
             launchAtLoginEnabled: launchAtLoginEnabled,
             automaticUpdatesEnabled: automaticUpdatesEnabled
@@ -322,26 +331,72 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
     }
 
-    /// Manual "Check for Updates". Refetches now, bypassing the daily cache,
-    /// and swaps the item to "Update to version …" if the check turns one up.
+    /// Manual "Check for Updates". Refetches now, bypassing the daily cache. A
+    /// newer version also updates the menu item for the next time it opens.
     @objc private func checkForUpdatesClicked() {
         guard !checkingForUpdates else { return }
         checkingForUpdates = true
-        rebuildMenu()
+
+        // The fetch is usually sub-second but can run to the 5s timeout on a bad
+        // network. Reveal a spinner only once it outstays this grace period, so
+        // a fast check never flashes a window the user barely registers.
+        let reveal = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled, let self else { return }
+            let window = UpdateProgressWindow()
+            self.updateProgress = window
+            window.show()
+        }
 
         Task { [weak self] in
             guard let self else { return }
-            await updateChecker.checkNow()
+            let outcome = await updateChecker.checkNow()
+            reveal.cancel()
+            updateProgress?.close()
+            updateProgress = nil
             checkingForUpdates = false
             rebuildMenu()
+            presentManualCheckOutcome(outcome)
         }
     }
 
-    /// Downloads the installer for exactly the version the menu item named,
-    /// rather than sending the user to the releases page. Not the
-    /// `releases/latest/download/…` alias: GitHub resolves that to the newest
-    /// non-prerelease release, which 404s while only prereleases exist and can
-    /// serve a different version than the item advertised.
+    /// Alert acknowledging a user-initiated update check. Confirm when up to
+    /// date, offer the download when a newer version exists, and explain a
+    /// failed check plainly.
+    private func presentManualCheckOutcome(_ outcome: ManualCheckOutcome) {
+        // A menu bar app is never frontmost; without activating, the alert
+        // opens behind whatever the user is working in.
+        NSApp.activate(ignoringOtherApps: true)
+
+        let alert = NSAlert()
+        switch outcome {
+        case .updateAvailable(let version):
+            alert.messageText = "Update available!"
+            alert.informativeText =
+                "lifsaver \(version) is available now (you have \(lifsaverVersion) installed)."
+            alert.addButton(withTitle: "Download…")
+            alert.addButton(withTitle: "Later")
+            if alert.runModal() == .alertFirstButtonReturn {
+                downloadLatestInstaller()
+            }
+        case .upToDate:
+            alert.messageText = "You're up to date."
+            alert.informativeText = "lifsaver \(lifsaverVersion) is the latest version."
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+        case .failed:
+            alert.messageText = "Update error!"
+            alert.informativeText =
+                "Please check your internet connection and try again."
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+        }
+    }
+
+    /// Downloads the installer for exactly the version the menu item named. Not
+    /// the `releases/latest/download/…` alias: GitHub resolves that to the
+    /// newest non-prerelease release, which 404s while only prereleases exist
+    /// and can serve a different version than the item advertised.
     @objc private func downloadLatestInstaller() {
         guard
             let version = updateChecker.knownNewerVersion(),
@@ -444,5 +499,47 @@ extension StatusItemController {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: keyEquivalent)
         item.target = self
         return item
+    }
+}
+
+/// "Checking for Updates…" window with an indeterminate spinner, shown while a
+/// slow manual check is in flight and dismissed the moment it returns.
+@MainActor
+final class UpdateProgressWindow {
+    private let window: NSWindow
+
+    init() {
+        let padding: CGFloat = 20
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: 280, height: 84))
+
+        let spinner = NSProgressIndicator(
+            frame: NSRect(x: padding, y: 30, width: 24, height: 24))
+        spinner.style = .spinning
+        spinner.startAnimation(nil)
+        content.addSubview(spinner)
+
+        let label = NSTextField(labelWithString: "Checking for Updates…")
+        label.frame = NSRect(
+            x: spinner.frame.maxX + 12, y: 32, width: content.bounds.width - spinner.frame.maxX - 12 - padding,
+            height: 20)
+        content.addSubview(label)
+
+        // No .closable/.miniaturizable: the window has no manual dismissal —
+        // it lives exactly as long as the fetch.
+        window = NSWindow(
+            contentRect: content.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.title = "lifsaver"
+        window.contentView = content
+        window.isReleasedWhenClosed = false
+        window.center()
+    }
+
+    func show() {
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    func close() {
+        window.orderOut(nil)
     }
 }

@@ -85,11 +85,22 @@ enum EscalatedMount {
             return (.error("refusing to escalate: \(reason)"), [])
         }
 
+        // Capture the helper's stderr to a temp file instead of discarding it:
+        // a helper that crashes before it can emit its JSON report (dyld
+        // failure, a TCC denial as root) would otherwise be a black hole — no
+        // stdout, no stderr — in exactly the privileged path a diagnostic
+        // report exists to explain. Read on failure, below; always cleaned up.
+        let stderrPath = (NSTemporaryDirectory() as NSString)
+            .appendingPathComponent("lifsaver-helper-\(UUID().uuidString).stderr")
+        defer { try? FileManager.default.removeItem(atPath: stderrPath) }
+
         // Quote for the shell, then escape the whole line for the AppleScript
         // string literal (backslashes first, then double quotes).
         let shellQuotedPath = "'" + helperPath.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        let shellQuotedStderr = "'" + stderrPath.replacingOccurrences(of: "'", with: "'\\''") + "'"
         let innerCommand =
-            "\(shellQuotedPath) \(EscalatedMountHelper.helperFlag) 2>/dev/null; printf '\\n\(sentinel)%d' \"$?\""
+            "\(shellQuotedPath) \(EscalatedMountHelper.helperFlag) 2>\(shellQuotedStderr); "
+            + "printf '\\n\(sentinel)%d' \"$?\""
         let appleScriptBody =
             innerCommand
             .replacingOccurrences(of: "\\", with: "\\\\")
@@ -106,15 +117,26 @@ enum EscalatedMount {
             return (.error("could not launch osascript: \(error)"), [])
         }
 
+        let helperStderr =
+            (try? String(contentsOfFile: stderrPath, encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
         if result.status != 0 {
             let message = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
             if appleScriptErrorCode(from: message) == userCancelledCode {
                 return (.cancelled, [])
             }
-            return (.error(message), [])
+            return (.error(annotate(message, withStderr: helperStderr)), [])
         }
 
-        return parse(stdout: result.stdoutText)
+        return parse(stdout: result.stdoutText, helperStderr: helperStderr)
+    }
+
+    /// Appends the helper's captured stderr to an error message when there is
+    /// any — the difference between "unreadable helper output" and knowing the
+    /// helper died on a code-signing or permission error.
+    private static func annotate(_ message: String, withStderr stderr: String) -> String {
+        stderr.isEmpty ? message : message + "\n\nhelper stderr:\n" + stderr
     }
 
     /// The numeric code from a trailing "(<code>)" in an osascript error
@@ -153,9 +175,11 @@ enum EscalatedMount {
         return nil
     }
 
-    private static func parse(stdout: String) -> (outcome: EscalatedMountOutcome, helperLog: [String]) {
+    private static func parse(
+        stdout: String, helperStderr: String
+    ) -> (outcome: EscalatedMountOutcome, helperLog: [String]) {
         guard let sentinelRange = stdout.range(of: sentinel, options: .backwards) else {
-            return (.error("missing exit sentinel in helper output"), [])
+            return (.error(annotate("missing exit sentinel in helper output", withStderr: helperStderr)), [])
         }
         let exitText = stdout[sentinelRange.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
         let payload = String(stdout[..<sentinelRange.lowerBound])
@@ -165,11 +189,13 @@ enum EscalatedMount {
             let report = try? JSONDecoder().decode(MountReport.self, from: Data(payload[jsonStart...].utf8))
         else {
             let exitCode = Int32(exitText) ?? -1
-            return (.error("unreadable helper output (exit \(exitCode))"), [])
+            return (.error(annotate("unreadable helper output (exit \(exitCode))", withStderr: helperStderr)), [])
         }
 
-        // The helper's stderr is discarded by the escalation plumbing, so a
-        // root-side failure arrives in-band.
+        // A helper that reached this point emitted its report, so a root-side
+        // failure it detected arrives in-band via `error` and its timestamped
+        // `log` — richer than the raw stderr, which only helps when the helper
+        // died before it could report at all.
         if let error = report.error {
             return (.error(error), report.log)
         }

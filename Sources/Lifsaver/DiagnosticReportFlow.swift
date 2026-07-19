@@ -22,7 +22,7 @@ enum DiagnosticReportFlow {
             let reporter = DiagnosticsReporter(runner: DefaultProcessRunner())
             let report = await reporter.generate(userNote: note, appEvents: appEvents, liveLog: liveLog)
             do {
-                try report.write(to: url, atomically: true, encoding: .utf8)
+                try report.jsonString().write(to: url, atomically: true, encoding: .utf8)
                 NSWorkspace.shared.activateFileViewerSelecting([url])
                 offerEmail(for: url)
             } catch {

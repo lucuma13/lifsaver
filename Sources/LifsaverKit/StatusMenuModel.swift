@@ -68,7 +68,6 @@ public enum StatusMenuModel {
     public static func entries(
         state: ScanState,
         newerVersion: String?,
-        isCheckingForUpdates: Bool = false,
         showLaunchAtLogin: Bool,
         launchAtLoginEnabled: Bool,
         automaticUpdatesEnabled: Bool
@@ -92,11 +91,11 @@ public enum StatusMenuModel {
         // Always present — reports are most needed exactly when scans fail.
         entries.append(.saveReport(title: "Send Diagnostic Report"))
         // The update item is always present: it opens the latest installer once
-        // a newer version is known, otherwise it triggers a manual check on click.
+        // a newer version is known, otherwise it triggers a manual check on
+        // click. The check's own progress and result are shown in an alert, not
+        // the menu, which closes the instant the item is clicked.
         if let newerVersion {
             entries.append(.updateAvailable(title: "Update to version \(newerVersion)"))
-        } else if isCheckingForUpdates {
-            entries.append(.disabled("Checking for Updates…"))
         } else {
             entries.append(.checkForUpdates(title: "Check for Updates"))
         }

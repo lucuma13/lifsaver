@@ -16,8 +16,20 @@ public struct Console: Sendable {
 
     public static let standard = Console(
         out: { print($0) },
-        err: { FileHandle.standardError.write(Data(($0 + "\n").utf8)) }
+        err: { writeStandardError($0 + "\n") }
     )
+}
+
+/// Serializes writes to real stderr. The helper funnels both console streams
+/// here from tasks that can run concurrently, and raw `FileHandle` writes
+/// neither lock nor guarantee whole-line atomicity — so interleaved bytes are
+/// possible without this. Also uses the throwing overload rather than the
+/// deprecated one that raises an Objective-C exception on error.
+private let standardErrorQueue = DispatchQueue(label: "app.lifsaver.console.stderr")
+private func writeStandardError(_ text: String) {
+    standardErrorQueue.sync {
+        try? FileHandle.standardError.write(contentsOf: Data(text.utf8))
+    }
 }
 
 /// Timestamped, capped, thread-safe buffer of live `Console` output, so a
@@ -29,26 +41,39 @@ public struct Console: Sendable {
 /// watcher rescans on every disk event, and an unbounded buffer would grow for
 /// as long as the app stays resident.
 public final class ConsoleLog: Sendable {
-    private let lines: OSAllocatedUnfairLock<[String]>
+    /// A recorded line keeps its `Date` rather than a formatted string: the
+    /// timestamp is rendered only in `snapshot()`, which almost nothing calls
+    /// (lines surface only when a diagnostic report is saved). A `nil` date
+    /// marks a line already formatted elsewhere — merged verbatim.
+    private struct Entry: Sendable {
+        let timestamp: Date?
+        let text: String
+    }
+
+    private let entries: OSAllocatedUnfairLock<[Entry]>
     private let capacity: Int
     private let now: @Sendable () -> Date
 
     public init(capacity: Int = 400, now: @escaping @Sendable () -> Date = { Date() }) {
-        self.lines = OSAllocatedUnfairLock(initialState: [])
+        self.entries = OSAllocatedUnfairLock(initialState: [])
         self.capacity = capacity
         self.now = now
     }
 
-    /// Records one line, prefixed with a timestamp.
+    /// Records one line, stamped with the current time (formatted on read).
     public func record(_ line: String) {
-        append(["\(ISO8601DateFormatter().string(from: now())) \(line)"])
+        add([Entry(timestamp: now(), text: line)])
     }
 
     /// Appends already-formatted lines verbatim — for merging a log captured
     /// elsewhere (the root helper timestamps its own lines).
     public func append(_ newLines: [String]) {
-        lines.withLock {
-            $0.append(contentsOf: newLines)
+        add(newLines.map { Entry(timestamp: nil, text: $0) })
+    }
+
+    private func add(_ newEntries: [Entry]) {
+        entries.withLock {
+            $0.append(contentsOf: newEntries)
             if $0.count > capacity {
                 $0.removeFirst($0.count - capacity)
             }
@@ -56,7 +81,12 @@ public final class ConsoleLog: Sendable {
     }
 
     public func snapshot() -> [String] {
-        lines.withLock { $0 }
+        entries.withLock { store in
+            store.map { entry in
+                guard let timestamp = entry.timestamp else { return entry.text }
+                return "\(timestamp.formatted(.iso8601)) \(entry.text)"
+            }
+        }
     }
 
     /// A console that records every line here and forwards it to `other`.

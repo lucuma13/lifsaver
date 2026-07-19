@@ -184,6 +184,17 @@ public struct GitHubReleaseFetcher: LatestReleaseFetching {
 // Checker
 // ---------------------------------------------------------------------------
 
+/// Result of a user-initiated "Check for Updates". Unlike the passive launch
+/// check, the manual action must always tell the user what happened.
+public enum ManualCheckOutcome: Equatable, Sendable {
+    /// The fetch succeeded and a strictly newer release exists.
+    case updateAvailable(String)
+    /// The fetch succeeded and the current version is the newest.
+    case upToDate
+    /// The fetch failed (offline, GitHub unreachable, no releases yet, …).
+    case failed
+}
+
 public final class UpdateChecker: Sendable {
     let package: String
     let repo: String
@@ -243,10 +254,13 @@ public final class UpdateChecker: Sendable {
 
     /// Force a fresh check now, ignoring the cache and the version gate that
     /// only governs the passive launch check — the user asked for this.
-    /// Refreshes the known version and cache; the result is then reflected by
-    /// `knownNewerVersion()`. For the GUI "Check for Updates" menu action.
-    public func checkNow() async {
-        await refresh()
+    /// Refreshes the known version and cache and reports the outcome so the GUI
+    /// can acknowledge the manual "Check for Updates" action; a newer version
+    /// is also reflected by `knownNewerVersion()`.
+    public func checkNow() async -> ManualCheckOutcome {
+        guard await refresh() else { return .failed }
+        if let newer = knownNewerVersion() { return .updateAvailable(newer) }
+        return .upToDate
     }
 
     // --- internals ---------------------------------------------------------
@@ -254,17 +268,20 @@ public final class UpdateChecker: Sendable {
     /// Fetch the newest release tag, normalize it, and publish it to both the
     /// in-memory box and the on-disk cache. Single body shared by the passive
     /// launch check and the manual menu check so the two can never drift.
-    private func refresh() async {
+    /// Returns whether the fetch succeeded; the passive path ignores it.
+    @discardableResult
+    private func refresh() async -> Bool {
         guard
             let tag = await fetcher.fetchLatestTag(
                 repo: repo,
                 userAgent: "\(package)/\(currentVersion) (update-check)",
                 timeout: 5
             )
-        else { return }
+        else { return false }
         let version = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
         latestBox.withLock { $0 = version }
         writeCache(version)
+        return true
     }
 
     func readCache() -> String? {

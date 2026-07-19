@@ -18,31 +18,31 @@ private struct StubError: Error {}
         DiagnosticsReporter(runner: runner, mountTable: mountTable)
     }
 
-    @Test func headerCarriesVersionAndPrivacyNote() async {
-        let report = await reporter().generate()
-        #expect(report.contains("# lifsaver diagnostic report"))
-        #expect(report.contains("- version: \(lifsaverVersion)"))
-        #expect(report.contains("Review it before sharing."))
+    @Test func metaCarriesVersionAndPrivacyNote() async {
+        let meta = await reporter().generate().meta
+        #expect(meta.version == lifsaverVersion)
+        #expect(meta.privacyNote.contains("Review it before sharing."))
     }
 
     @Test func scanTraceListsDetectedTargets() async {
-        let report = await reporter().generate()
-        #expect(report.contains("## Scan trace"))
-        #expect(report.contains("target: disk4s1"))
+        let trace = await reporter().generate().scanTrace
+        #expect(trace.error == nil)
+        #expect(trace.targets.contains { $0.device == "disk4s1" })
     }
 
-    @Test func rawDiskutilSectionsIncludeListAndPerDiskInfo() async {
+    @Test func diskutilSectionsAreNativeStructuredJSON() async {
         let report = await reporter().generate()
-        #expect(report.contains("## diskutil list -plist"))
-        #expect(report.contains("AllDisksAndPartitions"))
-        #expect(report.contains("--- disk4 ---"))
-        #expect(report.contains("RemovableMediaOrExternalDevice"))
+        // Parsed to native JSON, not an escaped XML blob: fields are queryable.
+        #expect(report.diskutilList["AllDisksAndPartitions"] != nil)
+        let disk4 = report.diskInfo.first { $0.device == "disk4" }
+        #expect(disk4?.info["RemovableMediaOrExternalDevice"]?.boolValue == true)
     }
 
-    @Test func mountTableEntriesAreRendered() async {
+    @Test func mountTableEntriesAreCaptured() async {
         let table = FakeMountTable([MountEntry(device: "/dev/disk4s1", mountPoint: "/Volumes/CARD")])
         let report = await reporter(mountTable: table).generate()
-        #expect(report.contains("/dev/disk4s1 → /Volumes/CARD"))
+        #expect(report.mountTableError == nil)
+        #expect(report.mountTable.contains { $0.device == "/dev/disk4s1" && $0.mountPoint == "/Volumes/CARD" })
     }
 
     @Test func userNoteAndAppEventsAreEmbedded() async {
@@ -50,47 +50,56 @@ private struct StubError: Error {}
             userNote: "Card stayed invisible after inserting.",
             appEvents: ["2026-07-17T10:00:00Z mount attempt failed: boom"]
         )
-        #expect(report.contains("Card stayed invisible after inserting."))
-        #expect(report.contains("## Recent app events"))
-        #expect(report.contains("mount attempt failed: boom"))
+        #expect(report.userNote == "Card stayed invisible after inserting.")
+        #expect(report.appEvents == ["2026-07-17T10:00:00Z mount attempt failed: boom"])
     }
 
     @Test func missingNoteAndEventsDegradeGracefully() async {
         let report = await reporter().generate(userNote: "  \n")
-        #expect(report.contains("(not provided)"))
-        #expect(!report.contains("## Recent app events"))
-        #expect(!report.contains("## Live log"))
+        #expect(report.userNote == nil)
+        #expect(report.appEvents.isEmpty)
+        #expect(report.liveLog.isEmpty)
     }
 
     @Test func liveLogIsEmbeddedVerbatim() async {
-        let report = await reporter().generate(liveLog: [
+        let lines = [
             "2026-07-17T10:00:01Z Attempting diskutil mount...",
             "--- escalated helper (root) ---",
-        ])
-        #expect(report.contains("## Live log"))
-        #expect(report.contains("2026-07-17T10:00:01Z Attempting diskutil mount..."))
-        #expect(report.contains("--- escalated helper (root) ---"))
+        ]
+        let report = await reporter().generate(liveLog: lines)
+        #expect(report.liveLog == lines)
     }
 
     @Test func failingCommandsNeverAbortTheReport() async {
         let runner = FakeProcessRunner(throwing: StubError())
         let report = await reporter(runner: runner, mountTable: FakeMountTable(throwing: StubError()))
             .generate(userNote: "note")
-        #expect(report.contains("scan failed:"))
-        #expect(report.contains("unavailable:"))
-        #expect(report.contains("note"))
+        #expect(report.scanTrace.error?.contains("scan failed:") == true)
+        #expect(report.mountTableError?.contains("unavailable:") == true)
+        #expect(report.userNote == "note")
     }
 
-    @Test func quietFsckProbeSaysNoneRunning() async {
+    @Test func quietFsckProbeYieldsNoProcesses() async {
         let report = await reporter().generate()
-        #expect(report.contains("(none running)"))
+        #expect(report.fsckProcesses.isEmpty)
+    }
+
+    /// The report exists to be machine-parsed: its JSON must round-trip.
+    @Test func jsonStringIsValidAndRoundTrips() async throws {
+        let report = await reporter().generate(userNote: "note", appEvents: ["event"], liveLog: ["log"])
+        let data = Data(report.jsonString().utf8)
+        let decoded = try JSONDecoder().decode(DiagnosticReport.self, from: data)
+        #expect(decoded.userNote == "note")
+        #expect(decoded.appEvents == ["event"])
+        #expect(decoded.meta.version == lifsaverVersion)
+        #expect(decoded.scanTrace.targets.contains { $0.device == "disk4s1" })
     }
 
     @Test func suggestedFilenameIsSortableAndSafe() {
         let date = Date(timeIntervalSince1970: 0)
         let name = DiagnosticsReporter.suggestedFilename(for: date)
         #expect(name.hasPrefix("lifsaver-report-"))
-        #expect(name.hasSuffix(".txt"))
+        #expect(name.hasSuffix(".json"))
         #expect(!name.contains(" "))
         #expect(!name.contains(":"))
     }
@@ -110,11 +119,11 @@ private struct StubError: Error {}
     }
 
     @Test func mailtoURLIsAddressedAndPrefilled() throws {
-        let url = try #require(lifsaverReportMailtoURL(reportFilename: "lifsaver-report-x.txt"))
+        let url = try #require(lifsaverReportMailtoURL(reportFilename: "lifsaver-report-x.json"))
         #expect(url.scheme == "mailto")
         let absolute = url.absoluteString
         #expect(absolute.contains("subject=lifsaver%20diagnostic%20report"))
-        #expect(absolute.contains("lifsaver-report-x.txt"))
+        #expect(absolute.contains("lifsaver-report-x.json"))
         let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
         #expect(components.path == lifsaverSupportEmail)
     }

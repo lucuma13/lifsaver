@@ -248,7 +248,27 @@ private func check(_ checker: UpdateChecker) async {
         let fetcher = FakeReleaseFetcher(tag: "v9.9.9")
         let checker = makeChecker(
             currentVersion: "unknown", fetcher: fetcher, cacheDirectory: temporaryDirectory())
-        await checker.checkNow()
+        _ = await checker.checkNow()
         #expect(fetcher.fetchCount == 1)
+    }
+
+    @Test func checkNowReportsUpdateAvailable() async {
+        let checker = makeChecker(
+            fetcher: FakeReleaseFetcher(tag: "v9.9.9"), cacheDirectory: temporaryDirectory())
+        #expect(await checker.checkNow() == .updateAvailable("9.9.9"))
+    }
+
+    @Test func checkNowReportsUpToDate() async {
+        let checker = makeChecker(
+            fetcher: FakeReleaseFetcher(tag: "v1.0.0"), cacheDirectory: temporaryDirectory())
+        #expect(await checker.checkNow() == .upToDate)
+    }
+
+    @Test func checkNowReportsFailureWhenFetchFails() async {
+        // A nil fetch stands for every failure: offline, unreachable, or no
+        // release published yet.
+        let checker = makeChecker(
+            fetcher: FakeReleaseFetcher(tag: nil), cacheDirectory: temporaryDirectory())
+        #expect(await checker.checkNow() == .failed)
     }
 }

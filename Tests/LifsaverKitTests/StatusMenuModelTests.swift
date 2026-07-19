@@ -11,7 +11,6 @@ import Testing
     private func entries(
         state: StatusMenuModel.ScanState,
         newerVersion: String? = nil,
-        isCheckingForUpdates: Bool = false,
         showLaunchAtLogin: Bool = false,
         launchAtLoginEnabled: Bool = false,
         automaticUpdatesEnabled: Bool = true
@@ -19,7 +18,6 @@ import Testing
         StatusMenuModel.entries(
             state: state,
             newerVersion: newerVersion,
-            isCheckingForUpdates: isCheckingForUpdates,
             showLaunchAtLogin: showLaunchAtLogin,
             launchAtLoginEnabled: launchAtLoginEnabled,
             automaticUpdatesEnabled: automaticUpdatesEnabled
@@ -100,19 +98,6 @@ import Testing
         #expect(result.contains(.updateAvailable(title: "Update to version 2.1.0")))
         #expect(!result.contains(.checkForUpdates(title: "Check for Updates")))
         #expect(result.last == .quit(title: "Quit"))
-    }
-
-    @Test func checkingShowsProgressPlaceholder() {
-        let result = entries(state: .scanning, isCheckingForUpdates: true)
-        #expect(result.contains(.disabled("Checking for Updates…")))
-        #expect(!result.contains(.checkForUpdates(title: "Check for Updates")))
-    }
-
-    @Test func knownUpdateWinsOverCheckingState() {
-        // A newer version already in hand shows the update item, not progress.
-        let result = entries(state: .scanning, newerVersion: "2.1.0", isCheckingForUpdates: true)
-        #expect(result.contains(.updateAvailable(title: "Update to version 2.1.0")))
-        #expect(!result.contains(.disabled("Checking for Updates…")))
     }
 
     @Test func moreOptionsHidesStartAtLoginWhenUnbundled() {
