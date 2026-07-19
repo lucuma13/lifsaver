@@ -502,27 +502,41 @@ extension StatusItemController {
     }
 }
 
-/// "Checking for Updates…" window with an indeterminate spinner, shown while a
-/// slow manual check is in flight and dismissed the moment it returns.
+/// "Checking for Updates…" window shown while a slow manual check is in flight,
+/// dismissed the moment it returns.
 @MainActor
 final class UpdateProgressWindow {
     private let window: NSWindow
 
     init() {
         let padding: CGFloat = 20
-        let content = NSView(frame: NSRect(x: 0, y: 0, width: 280, height: 84))
+        let iconSide: CGFloat = 64
+        let gap: CGFloat = 16
+        let textWidth: CGFloat = 240
+        let width = padding + iconSide + gap + textWidth + padding
+        let height = padding + iconSide + padding
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: width, height: height))
 
-        let spinner = NSProgressIndicator(
-            frame: NSRect(x: padding, y: 30, width: 24, height: 24))
-        spinner.style = .spinning
-        spinner.startAnimation(nil)
-        content.addSubview(spinner)
+        // The same app icon NSAlert draws, so the progress and result screens
+        // share their branding.
+        let icon = NSImageView(
+            frame: NSRect(x: padding, y: height - padding - iconSide, width: iconSide, height: iconSide))
+        icon.image = NSApp.applicationIconImage
+        icon.imageScaling = .scaleProportionallyUpOrDown
+        content.addSubview(icon)
 
-        let label = NSTextField(labelWithString: "Checking for Updates…")
-        label.frame = NSRect(
-            x: spinner.frame.maxX + 12, y: 32, width: content.bounds.width - spinner.frame.maxX - 12 - padding,
-            height: 20)
-        content.addSubview(label)
+        let textX = padding + iconSide + gap
+        let title = NSTextField(labelWithString: "Checking for Updates…")
+        title.font = .boldSystemFont(ofSize: NSFont.systemFontSize)
+        title.frame = NSRect(x: textX, y: height - padding - 20, width: textWidth, height: 20)
+        content.addSubview(title)
+
+        let bar = NSProgressIndicator(
+            frame: NSRect(x: textX, y: height - padding - 52, width: textWidth, height: 20))
+        bar.style = .bar
+        bar.isIndeterminate = true
+        bar.startAnimation(nil)
+        content.addSubview(bar)
 
         // No .closable/.miniaturizable: the window has no manual dismissal —
         // it lives exactly as long as the fetch.
