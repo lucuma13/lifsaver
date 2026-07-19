@@ -10,7 +10,7 @@
 
 <br clear="left"/>
 
-<img src="docs/images/demo.gif" width="100%"/>
+<img src="docs/images/lifsaver_demo_animation.gif" width="100%"/>
 
 ### 🚀 Installation
 
