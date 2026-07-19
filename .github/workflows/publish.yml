@@ -35,7 +35,7 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           VERSION="$(./scripts/version.sh)"
-          if [ "v$VERSION" != "$TAG" ]; then
+          if [ "$VERSION" != "$TAG" ]; then
             echo "ERROR: tag $TAG does not match Version.swift ($VERSION)" >&2
             exit 1
           fi
@@ -51,7 +51,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
-          VERSION="${TAG#v}"
+          VERSION="$TAG"
           gh release upload "$TAG" \
             "dist/lifsaver_installer_macos.pkg" \
             "dist/lifsaver-$VERSION-macos-universal.zip"
