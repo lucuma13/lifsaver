@@ -1,14 +1,10 @@
-# lifsaver
+<p align="center"><img src="docs/images/lifsaver_logo_name.svg" width="215"/></p>
 
 ![OS](https://img.shields.io/badge/OS-macOS-lightgrey)
 [![CI](https://github.com/lucuma13/lifsaver/actions/workflows/ci.yml/badge.svg)](https://github.com/lucuma13/lifsaver/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/lucuma13/lifsaver/graph/badge.svg?token=88HT6VMLHO)](https://codecov.io/gh/lucuma13/lifsaver)
 
-<img src="docs/images/lifsaver_logo_name.svg" width="110" align="left" hspace="10"/>
-
-`lifsaver` addresses a bug on macOS Live Item File System (LIFS) which prevents multiple cards from mounting when they have the same name (e.g. `Untitled` or `NO NAME`). It watches for cards that appear but never mount, and lets you mount them in two clicks. This app is not affiliated with Apple, and you use it at your own risk.
-
-<br clear="left"/>
+`lifsaver` addresses a bug on macOS Live Item File System (LIFS) which prevents multiple cards from mounting when they have the same name (e.g. `Untitled` or `NO NAME`). It watches for cards that appear but never mount, and lets you mount them in two clicks.
 
 <img src="docs/images/lifsaver_demo_animation.gif" width="100%"/>
 
@@ -35,4 +31,4 @@ If the app misses a stalled card or fails to mount it, please send a diagnostic 
 
 ### ⚠️ Disclaimer
 
-`lifsaver` deliberately circumvents standard macOS Disk Arbitration and LiveFS protections to force-mount stalled volumes. The author assumes no liability for lost or corrupted data, or hardware failures of any kind.
+`lifsaver` deliberately circumvents standard macOS Disk Arbitration and LiveFS protections to force-mount stalled volumes. The author assumes no liability for lost or corrupted data, or hardware failures of any kind. This app is not affiliated with Apple, and you use it at your own risk. 
