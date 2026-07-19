@@ -401,7 +401,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         guard
             let version = updateChecker.knownNewerVersion(),
             let url = URL(
-                string: "https://github.com/\(githubRepo)/releases/download/v\(version)/\(installerAssetName)"
+                string: "https://github.com/\(githubRepo)/releases/download/\(version)/\(installerAssetName)"
             )
         else { return }
         NSWorkspace.shared.open(url)

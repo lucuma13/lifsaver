@@ -2,7 +2,7 @@ cask "lifsaver" do
   version "__VERSION__"
   sha256 "__SHA256__"
 
-  url "https://github.com/lucuma13/lifsaver/releases/download/v#{version}/lifsaver-#{version}-macos-universal.zip"
+  url "https://github.com/lucuma13/lifsaver/releases/download/#{version}/lifsaver-#{version}-macos-universal.zip"
   name "lifsaver"
   desc "Force-mount external camera cards stuck in macOS LIFS Disk Utility limbo"
   homepage "https://github.com/lucuma13/lifsaver"
