@@ -1,8 +1,12 @@
 .DEFAULT_GOAL := help
-.PHONY: upgrade pre-commit test run render install uninstall reinstall clean help
+.PHONY: setup-dev upgrade pre-commit test run render install uninstall reinstall clean help
 
 # The .app/.pkg product name
 APP := Lifsaver
+
+setup-dev: ## Install dev pre-requisites (SwiftLint, pre-commit) and enable the hooks
+	brew install swiftlint pre-commit
+	pre-commit install
 
 upgrade: ## Upgrade dependencies
 	swift package update
