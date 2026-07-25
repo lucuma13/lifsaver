@@ -90,14 +90,8 @@ jobs:
         run: swift --version
       - name: Build and run test suite
         run: swift test --enable-code-coverage
-      - name: Export coverage (LCOV)
-        run: |
-          BIN=$(swift build --show-bin-path)
-          xcrun llvm-cov export \
-            -format=lcov \
-            -instr-profile "$BIN/codecov/default.profdata" \
-            "$BIN/LifsaverPackageTests.xctest/Contents/MacOS/LifsaverPackageTests" \
-            -ignore-filename-regex='(Tests|\.build)/' > coverage.lcov
+      - name: Report and export coverage (LCOV)
+        run: ./scripts/coverage.sh
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
         with:

@@ -12,13 +12,7 @@ pre-commit: ## Run all pre-commit hooks
 
 test: ## Run the test suite
 	swift test --enable-code-coverage
-	@PROF=$$(find .build -name default.profdata -print -quit); \
-	[ -f "$$PROF" ] || exit 0; \
-	find .build -name '*.xctest' | while read -r B; do \
-	  [ -d "$$B" ] && B="$$B/Contents/MacOS/$$(basename "$$B" .xctest)"; \
-	  xcrun llvm-cov report "$$B" -instr-profile="$$PROF" -ignore-filename-regex='\.build|Tests' \
-	    || llvm-cov report "$$B" -instr-profile="$$PROF" -ignore-filename-regex='\.build|Tests'; \
-	done
+	./scripts/coverage.sh
 
 run: ## Build and run the debug executable (unbundled) for quick iteration
 	swift run
@@ -45,6 +39,7 @@ reinstall: ## Uninstall any previous copy, then install fresh
 
 clean: ## Remove build artifacts
 	rm -rf .build dist
+	rm -f coverage.lcov
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \

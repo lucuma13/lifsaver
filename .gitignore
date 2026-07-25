@@ -124,3 +124,6 @@ DerivedData/
 
 # Release artifacts produced by scripts/
 dist/
+
+# Coverage export written by scripts/coverage.sh
+coverage.lcov
