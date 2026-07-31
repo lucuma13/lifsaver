@@ -32,7 +32,7 @@ public enum EscalatedMountHelper {
             targets = try await scanner.scanTargets()
         } catch {
             // The invoking app discards this process's stderr, so the failure
-            // must also travel in the JSON report — otherwise the user pays for
+            // must also travel in the JSON report - otherwise the user pays for
             // a password dialog and learns nothing about why it failed.
             console.err("CRITICAL: \(error)")
             emitReport(

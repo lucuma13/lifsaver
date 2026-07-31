@@ -25,9 +25,9 @@ enum Notifier {
 
     static func post(title: String, body: String, category: String? = nil) {
         // UNUserNotificationCenter aborts the process when there is no bundle
-        // proxy — guard for development runs outside the .app.
+        // proxy - guard for development runs outside the .app.
         guard Bundle.main.bundleIdentifier != nil else {
-            NSLog("lifsaver notification: %@ — %@", title, body)
+            NSLog("lifsaver notification: %@ - %@", title, body)
             return
         }
 
@@ -45,7 +45,7 @@ enum Notifier {
                 granted = false
             }
             guard granted else {
-                NSLog("lifsaver notification (permission denied): %@ — %@", title, body)
+                NSLog("lifsaver notification (permission denied): %@ - %@", title, body)
                 return
             }
             let content = UNMutableNotificationContent()
@@ -84,7 +84,7 @@ private final class ClickDelegate: NSObject, UNUserNotificationCenterDelegate {
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
         // An accessory app can count as "frontmost", which would swallow the
-        // banner by default — show it regardless.
+        // banner by default - show it regardless.
         .banner
     }
 }

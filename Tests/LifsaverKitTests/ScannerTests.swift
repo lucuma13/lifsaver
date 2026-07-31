@@ -29,7 +29,7 @@ import os
     }
 
     @Test func throwsOnFailure() {
-        // A read failure must never read as "nothing mounted" — that would turn
+        // A read failure must never read as "nothing mounted" - that would turn
         // every mounted volume into a mount target.
         let table = FakeMountTable(throwing: POSIXError(.EIO))
         #expect(throws: (any Error).self) {
@@ -68,7 +68,7 @@ import os
     }
 
     @Test func alwaysTakesFreshSnapshot() {
-        // Must never rely on a cached set — each call must hit the mount table.
+        // Must never rely on a cached set - each call must hit the mount table.
         let table = FakeMountTable()
         let scanner = makeScanner(mountTable: table)
         _ = scanner.isCurrentlyMounted("disk4s1")
@@ -323,7 +323,7 @@ import os
         let runner = diskutilRunner(info: ["disk4": infoExternal])
         let targets = await makeScanner(runner: runner).filterTargetPartitions(diskutilPlistAPFS, activeMounts: [])
         #expect(targets.isEmpty)
-        // Content filtering alone rules the disk out — no subprocess needed.
+        // Content filtering alone rules the disk out - no subprocess needed.
         #expect(runner.calls.isEmpty)
     }
 
@@ -342,7 +342,7 @@ import os
         let runner = diskutilRunner(info: ["disk4": infoExternal])
         let scanner = makeScanner(runner: runner, console: captured.console, verbose: true)
         _ = await scanner.filterTargetPartitions(diskutilPlistEFI, activeMounts: [])
-        #expect(captured.outText.contains("Skipping disk4s1 — system partition (EFI)."))
+        #expect(captured.outText.contains("Skipping disk4s1 - system partition (EFI)."))
 
         _ = await scanner.filterTargetPartitions(
             [
@@ -351,7 +351,7 @@ import os
                 ]
             ],
             activeMounts: [])
-        #expect(captured.outText.contains("Skipping disk6s1 — Content (empty) is not camera-card-like."))
+        #expect(captured.outText.contains("Skipping disk6s1 - Content (empty) is not camera-card-like."))
     }
 
     @Test func contentSkipsAreSilentByDefault() async {
@@ -373,7 +373,7 @@ import os
 
     @Test func multiDiskMultiPartition() async {
         // disk4s1=EFI(skip), disk4s2=MBD(ok), disk4s3=DOS_FAT_32(ok),
-        // disk4s4=Windows_NTFS(ok — exFAT and NTFS share MBR type 0x07),
+        // disk4s4=Windows_NTFS(ok - exFAT and NTFS share MBR type 0x07),
         // disk5: personality-name variants; only allowlisted spellings match
         let runner = diskutilRunner(info: ["disk4": infoExternal, "disk5": infoExternal])
         let targets = await makeScanner(runner: runner).filterTargetPartitions(diskutilPlistMulti, activeMounts: [])

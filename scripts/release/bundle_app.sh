@@ -34,7 +34,7 @@ cp "$SRC_RESOURCES/MenuBarIcon.png" "$SRC_RESOURCES/MenuBarIcon@2x.png" \
 # Colour app icon (Finder/Dock/About), pre-rendered and committed; regenerate
 # with scripts/render/icons.sh when the logo changes.
 [ -f "$SRC_RESOURCES/AppIcon.icns" ] || {
-  echo "ERROR: $SRC_RESOURCES/AppIcon.icns missing — run scripts/render/icons.sh" >&2
+  echo "ERROR: $SRC_RESOURCES/AppIcon.icns missing - run scripts/render/icons.sh" >&2
   exit 1
 }
 cp "$SRC_RESOURCES/AppIcon.icns" "$APP/Contents/Resources/"

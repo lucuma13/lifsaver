@@ -22,7 +22,7 @@ public struct Console: Sendable {
 
 /// Serializes writes to real stderr. The helper funnels both console streams
 /// here from tasks that can run concurrently, and raw `FileHandle` writes
-/// neither lock nor guarantee whole-line atomicity — so interleaved bytes are
+/// neither lock nor guarantee whole-line atomicity - so interleaved bytes are
 /// possible without this. Also uses the throwing overload rather than the
 /// deprecated one that raises an Objective-C exception on error.
 private let standardErrorQueue = DispatchQueue(label: "app.lifsaver.console.stderr")
@@ -37,14 +37,14 @@ private func writeStandardError(_ text: String) {
 /// mount attempts instead of only a re-scan taken at report time.
 ///
 /// `console(alsoTo:)` builds the tee: every line is recorded here and forwarded
-/// to the wrapped console. Oldest lines roll off past `capacity` — the disk
+/// to the wrapped console. Oldest lines roll off past `capacity` - the disk
 /// watcher rescans on every disk event, and an unbounded buffer would grow for
 /// as long as the app stays resident.
 public final class ConsoleLog: Sendable {
     /// A recorded line keeps its `Date` rather than a formatted string: the
     /// timestamp is rendered only in `snapshot()`, which almost nothing calls
     /// (lines surface only when a diagnostic report is saved). A `nil` date
-    /// marks a line already formatted elsewhere — merged verbatim.
+    /// marks a line already formatted elsewhere - merged verbatim.
     private struct Entry: Sendable {
         let timestamp: Date?
         let text: String
@@ -65,7 +65,7 @@ public final class ConsoleLog: Sendable {
         add([Entry(timestamp: now(), text: line)])
     }
 
-    /// Appends already-formatted lines verbatim — for merging a log captured
+    /// Appends already-formatted lines verbatim - for merging a log captured
     /// elsewhere (the root helper timestamps its own lines).
     public func append(_ newLines: [String]) {
         add(newLines.map { Entry(timestamp: nil, text: $0) })

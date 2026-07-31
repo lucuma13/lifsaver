@@ -244,7 +244,7 @@ private func check(_ checker: UpdateChecker) async {
 
     @Test func checkNowFetchesEvenForDevBuilds() async {
         // The manual GUI check ignores the version gate that silences the
-        // passive launch check — the user explicitly asked.
+        // passive launch check - the user explicitly asked.
         let fetcher = FakeReleaseFetcher(tag: "v9.9.9")
         let checker = makeChecker(
             currentVersion: "unknown", fetcher: fetcher, cacheDirectory: temporaryDirectory())

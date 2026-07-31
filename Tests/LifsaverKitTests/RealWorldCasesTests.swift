@@ -13,12 +13,12 @@ import Testing
 // device node present but absent from the mount table (diskarbitrationd:
 // "unable to mount /dev/disk13s1 (status code 0x00000204)"). A later manual
 // mount of the same device succeeded → /Volumes/Untitled 1. The fixtures model
-// the minimal two-card collision — one mounted namesake, one stalled — which
+// the minimal two-card collision - one mounted namesake, one stalled - which
 // is the mechanism under test.
 //
 // Fidelity caveat: the stalled card was captured as `diskutil list` text
 // (Content Windows_NTFS, name Untitled, exfat, external,
-// FDisk_partition_scheme, 960 GB) — the byte-exact `diskutil info -plist` at
+// FDisk_partition_scheme, 960 GB) - the byte-exact `diskutil info -plist` at
 // the stalled instant was not logged, and the mounted sibling's identifier
 // (disk4s1 at /Volumes/Untitled) comes from a later capture in the same
 // session. These fixtures replay the real observed values with the collision
@@ -27,7 +27,7 @@ import Testing
 //
 // Only detection-and-attempt is testable here: whether a real `diskutil mount`
 // clears a 0x204 collision is live-hardware behaviour, and the app only shells
-// out to diskutil — so these tests assert the right command is issued and its
+// out to diskutil - so these tests assert the right command is issued and its
 // result handled, never touching the real tools.
 
 /// Two-"Untitled" collision, second card stalled with a device node present.
@@ -75,7 +75,7 @@ private var untitledSingleCardList: [String: Any] {
     ]
 }
 
-/// First card mounted; the second (disk13s1) absent — the 0x204 stall.
+/// First card mounted; the second (disk13s1) absent - the 0x204 stall.
 private var stalledMountTable: FakeMountTable {
     FakeMountTable([MountEntry(device: "/dev/disk4s1", mountPoint: "/Volumes/Untitled")])
 }
@@ -122,7 +122,7 @@ private func collisionRunner(table: FakeMountTable, fsckOutput: String = "") -> 
     }
 
     @Test func secondCardWithoutDeviceNodeIsNotATarget() async throws {
-        // Nothing exists for the app (or diskutil) to mount — the scan must
+        // Nothing exists for the app (or diskutil) to mount - the scan must
         // come back empty rather than inventing a target.
         let scanner = makeScanner(
             runner: diskutilRunner(list: untitledSingleCardList, info: untitledCollisionInfo),

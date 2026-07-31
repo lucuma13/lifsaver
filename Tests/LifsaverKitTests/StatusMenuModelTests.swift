@@ -191,7 +191,7 @@ import Testing
     }
 
     @Test func cancellationAloneReportsTheDeclinedVolumesAsFailed() {
-        // Declining the password leaves the volume unmounted — a failure.
+        // Declining the password leaves the volume unmounted - a failure.
         #expect(combined(.init(fail: 1), .cancelled) == .report(.init(fail: 1)))
     }
 
@@ -219,7 +219,7 @@ import Testing
 
 @Suite struct ScanTargetDetailTests {
     @Test func includesFSTypeWhenKnown() {
-        #expect(StatusMenuModel.ScanTarget(devId: "disk4s1", fsType: "exfat").detail == "disk4s1 — exfat")
+        #expect(StatusMenuModel.ScanTarget(devId: "disk4s1", fsType: "exfat").detail == "disk4s1 - exfat")
     }
 
     @Test func fallsBackToDeviceWhenFSTypeUnknown() {
@@ -267,7 +267,7 @@ import Testing
     @Test func allSkippedExplainsWhyNothingMounted() {
         #expect(
             body(for: .report(.init(ok: 0, fail: 0, skip: 2)))
-                == "Nothing mounted — volumes were skipped (already mounted or being checked).")
+                == "Nothing mounted - volumes were skipped (already mounted or being checked).")
     }
 
     @Test func errorReportsPlainFailure() {

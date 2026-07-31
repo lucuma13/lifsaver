@@ -95,7 +95,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         baseIcon = base
         // The alert artwork is pre-rendered (see scripts/render/icons.sh) because turning
         // it 45° here would resample an 18px bitmap and soften it. Deliberately
-        // not a template image — the orange is the signal, so the system must
+        // not a template image - the orange is the signal, so the system must
         // not tint it away. Unbundled runs have no PNG to load and fall back to
         // punching a dot out of whatever base we ended up with.
         if let alert = NSImage(named: "MenuBarIconAlert") {
@@ -160,7 +160,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         Task { [weak self] in
             do {
                 let devices = try await scanner.scanTargets()
-                // The per-device queries are independent — fan them out instead
+                // The per-device queries are independent - fan them out instead
                 // of paying one subprocess round-trip after another.
                 let fsTypes = await withTaskGroup(of: (Int, String).self) { group in
                     for (index, device) in devices.enumerated() {
@@ -174,7 +174,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 }
                 let targets = zip(devices, fsTypes).map { StatusMenuModel.ScanTarget(devId: $0, fsType: $1) }
                 // A card diskarbitrationd is still fsck-ing may yet mount on
-                // its own — don't call it stalled. One pgrep snapshot serves
+                // its own - don't call it stalled. One pgrep snapshot serves
                 // every device; per-device freshness only matters at mount
                 // time, where Mounter re-checks.
                 let fsckListing = await scanner.fsckListing()
@@ -231,8 +231,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         button.image = (attention ? attentionIcon : baseIcon) ?? baseIcon
         button.toolTip =
             attention
-            ? "lifsaver — stalled volume detected"
-            : "lifsaver — mount stalled camera cards"
+            ? "lifsaver - stalled volume detected"
+            : "lifsaver - mount stalled camera cards"
     }
 
     /// The menu bar icon with an alert dot in the lower-right corner, punched
@@ -538,7 +538,7 @@ final class UpdateProgressWindow {
         bar.startAnimation(nil)
         content.addSubview(bar)
 
-        // No .closable/.miniaturizable: the window has no manual dismissal —
+        // No .closable/.miniaturizable: the window has no manual dismissal -
         // it lives exactly as long as the fetch.
         window = NSWindow(
             contentRect: content.frame, styleMask: [.titled], backing: .buffered, defer: false)

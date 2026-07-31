@@ -9,7 +9,7 @@
 # swiftc invocation. We rebuild a compilation database from it: one entry per
 # source carrying the module's args, with the compiler dropped, @response-files
 # expanded, and driver-only flags SourceKit rejects removed. Dependency modules
-# (under .build/) and test targets (under Tests/) are skipped — sourcekitd
+# (under .build/) and test targets (under Tests/) are skipped - sourcekitd
 # crashes expanding the swift-testing @Suite/@Test macros during analysis.
 set -euo pipefail
 

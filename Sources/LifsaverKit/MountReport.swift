@@ -32,7 +32,7 @@ public struct MountReport: Codable, Sendable, Equatable {
     public var mounted: [MountedVolume]
     /// Set when the helper failed before mounting anything (e.g. its scan
     /// threw). Carried in-band because the invoking app discards the helper's
-    /// stderr — this is the only channel that survives the escalation.
+    /// stderr - this is the only channel that survives the escalation.
     public var error: String?
     /// Timestamped console lines the helper recorded while scanning and
     /// mounting, carried in-band for the same reason as `error`. The app merges

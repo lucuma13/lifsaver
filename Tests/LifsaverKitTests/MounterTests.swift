@@ -170,7 +170,7 @@ func makeMounter(
 // ===========================================================================
 
 /// Simulates the full command surface execute() touches: pgrep, diskutil
-/// info/mount, and the raw mount binaries — plus the mount table a successful
+/// info/mount, and the raw mount binaries - plus the mount table a successful
 /// mount command mutates.
 private final class MountScenario: Sendable {
     private struct Config: Sendable {
@@ -326,7 +326,7 @@ private final class MountScenario: Sendable {
 }
 
 // ===========================================================================
-// execute — unprivileged pass (allowRawFallback: false)
+// execute - unprivileged pass (allowRawFallback: false)
 // ===========================================================================
 
 @Suite struct UnprivilegedExecuteTests {
@@ -373,7 +373,7 @@ private final class MountScenario: Sendable {
 }
 
 // ===========================================================================
-// execute — unreadable mount table
+// execute - unreadable mount table
 // ===========================================================================
 
 @Suite struct UnreadableMountTableTests {

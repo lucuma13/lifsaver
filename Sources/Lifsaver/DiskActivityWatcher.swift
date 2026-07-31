@@ -8,7 +8,7 @@ import Foundation
 ///
 /// Debouncing matters twice over: one card insertion produces a burst of
 /// events (the whole disk plus each partition), and diskarbitrationd may need
-/// a few seconds — fsck runs first on dirty cards — before mounting a healthy
+/// a few seconds - fsck runs first on dirty cards - before mounting a healthy
 /// card on its own. Scanning too eagerly would flag a card as stalled that
 /// was about to mount by itself.
 ///
@@ -27,7 +27,7 @@ final class DiskActivityWatcher {
         self.onActivity = onActivity
         session = DASessionCreate(kCFAllocatorDefault)
         guard let session else {
-            NSLog("lifsaver: DASessionCreate failed — proactive stall detection disabled")
+            NSLog("lifsaver: DASessionCreate failed - proactive stall detection disabled")
             return
         }
 

@@ -88,7 +88,7 @@ private func runHelper(
 
 @Suite struct EscalatedMountHelperTests {
     @Test func mountsEachTargetAndRoundTripsThroughSharedReportType() async throws {
-        // The app decodes this exact output as MountReport — assert the full
+        // The app decodes this exact output as MountReport - assert the full
         // document round-trips, not just substrings.
         let run = await runHelper(devices: ["disk4s1"])
         #expect(run.status == 0)
@@ -118,7 +118,7 @@ private func runHelper(
 
     @Test func failedScanEmitsErrorReport() async throws {
         // The invoking app discards this process's stderr, so the failure must
-        // arrive in-band as a well-formed report with `error` set — the user
+        // arrive in-band as a well-formed report with `error` set - the user
         // already paid for a password dialog and deserves the cause.
         let run = await runHelper(devices: ["disk4s1"], diskutilListSucceeds: false)
         #expect(run.status == 1)
@@ -145,7 +145,7 @@ private func runHelper(
     }
 
     @Test func activeFsckSkipsTargetRatherThanMounting() async throws {
-        // A skipped volume is not a failure — nothing was left in a bad state.
+        // A skipped volume is not a failure - nothing was left in a bad state.
         let run = await runHelper(devices: ["disk4s1"], fsckActive: true)
         #expect(run.status == 0)
         let report = try run.decodedReport()

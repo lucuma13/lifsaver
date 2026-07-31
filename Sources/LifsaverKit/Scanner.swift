@@ -9,10 +9,10 @@ import Foundation
 /// diskutil emits are enumerable, and exact matching can never widen to an
 /// Apple/EFI system partition when a new value is added.
 public let externalFSAllowlist: Set<String> = [
-    "DOS_FAT_32",  // MBR type 0x0B — FAT32 as formatted by macOS Disk Utility
-    "Windows_FAT_32",  // MBR type 0x0C (FAT32 LBA) — FAT32 as formatted by Windows / SD Formatter
-    "Windows_NTFS",  // MBR type 0x07 — shared by exFAT and NTFS; SDXC cards formatted in-camera report this
-    "Microsoft Basic Data",  // GPT Basic Data GUID — any FAT32/exFAT/NTFS partition on a GUID-partitioned card
+    "DOS_FAT_32",  // MBR type 0x0B - FAT32 as formatted by macOS Disk Utility
+    "Windows_FAT_32",  // MBR type 0x0C (FAT32 LBA) - FAT32 as formatted by Windows / SD Formatter
+    "Windows_NTFS",  // MBR type 0x07 - shared by exFAT and NTFS; SDXC cards formatted in-camera report this
+    "Microsoft Basic Data",  // GPT Basic Data GUID - any FAT32/exFAT/NTFS partition on a GUID-partitioned card
     "exFAT",  // filesystem personality names
     "ExFAT",  // values (exFAT reports Windows_NTFS or Microsoft Basic Data)
 ]
@@ -20,7 +20,7 @@ public let externalFSAllowlist: Set<String> = [
 // Blocklist: EFI, recovery, and Apple container types. Redundant with the
 // allowlist today, but kept as a second interlock: the allowlist gets edited,
 // and no future entry may ever expose Apple/EFI system partitions. Deliberately
-// substring-based — a blocklist erring broad is safe.
+// substring-based - a blocklist erring broad is safe.
 let blockedContentTokens = [
     "EFI",
     "Apple_APFS",
@@ -78,13 +78,13 @@ public struct DiskScanner: Sendable {
     /// from a fresh kernel snapshot. Virtual filesystems (devfs, autofs maps)
     /// are excluded. Throws when the table cannot be read: an empty set means
     /// "nothing mounted", and callers must never mistake a read failure for
-    /// that — it would turn every mounted volume into a mount target.
+    /// that - it would turn every mounted volume into a mount target.
     public func activeMounts() throws -> Set<String> {
         Set(try mountTable.entries().map(\.device).filter { $0.hasPrefix("/dev/") })
     }
 
     /// Re-query the live mount table for a single device. Always takes a fresh
-    /// snapshot — never relies on a cached set. nil when the table cannot be
+    /// snapshot - never relies on a cached set. nil when the table cannot be
     /// read ("unknown", not "unmounted").
     public func isCurrentlyMounted(_ devId: String) -> Bool? {
         do {
@@ -117,10 +117,10 @@ public struct DiskScanner: Sendable {
     }
 
     /// One `pgrep -fl fsck` snapshot, matchable against many devices via
-    /// `isFsckActive(_:listing:)` — a scan pass needs one snapshot, not one
+    /// `isFsckActive(_:listing:)` - a scan pass needs one snapshot, not one
     /// subprocess per device. Empty when nothing matches or pgrep fails.
     public func fsckListing() async -> String {
-        // pgrep exits 1 when nothing matches — not an error
+        // pgrep exits 1 when nothing matches - not an error
         ((try? await runner.run("pgrep", ["-fl", "fsck"], timeout: queryTimeout))?.stdoutText) ?? ""
     }
 
@@ -165,7 +165,7 @@ public struct DiskScanner: Sendable {
         return info
     }
 
-    /// The `Content` fallback names MBR partition types, not filesystems — map
+    /// The `Content` fallback names MBR partition types, not filesystems - map
     /// the unambiguous FAT ones onto the token the mount path understands, so a
     /// card without a `FilesystemType` key still tries mount_msdos first.
     /// (exFAT/NTFS share their partition types, so those stay untranslated.)
@@ -182,7 +182,7 @@ public struct DiskScanner: Sendable {
     public func partitionFSType(_ devId: String) async -> String {
         guard let info = await diskInfo(devId) else { return "" }
         // "FilesystemType" is the canonical key; fall back to content hint.
-        // An empty string counts as absent — the fallback must still apply.
+        // An empty string counts as absent - the fallback must still apply.
         let fsType = info["FilesystemType"] as? String
         let content = info["Content"] as? String
         let fs = ([fsType, content].compactMap { $0 }.first { !$0.isEmpty } ?? "").lowercased()
@@ -198,13 +198,13 @@ public struct DiskScanner: Sendable {
     /// OSInternal does not mean "internal hardware"), so this must be a
     /// separate per-disk query. Two signals, either suffices:
     ///
-    ///   - `Internal == false` — device sits on an external bus
-    ///   - `RemovableMediaOrExternalDevice == true` — second signal covering
+    ///   - `Internal == false` - device sits on an external bus
+    ///   - `RemovableMediaOrExternalDevice == true` - second signal covering
     ///     card readers whose USB bridges misreport `Internal`, and built-in SD
     ///     slots (removable media on an internal bus)
     ///
     /// Fails closed: an unreadable plist or missing keys count as internal. A
-    /// failed *query* gets one retry first — diskutil is most likely to be
+    /// failed *query* gets one retry first - diskutil is most likely to be
     /// flaky exactly when diskarbitrationd is wedged on a stalled card, and a
     /// single transient failure must not hide the card the app exists to
     /// rescue. A successful query whose keys say "internal" is final.
@@ -245,7 +245,7 @@ public struct DiskScanner: Sendable {
         }
 
         // Strict boundary: internal disks are never touched. The per-disk
-        // queries are independent, so they run concurrently — a wedged diskutil
+        // queries are independent, so they run concurrently - a wedged diskutil
         // stalls the scan once, not once per disk.
         let externality = await withTaskGroup(of: (Int, Bool).self) { group in
             for (index, entry) in perDisk.enumerated() {
@@ -264,7 +264,7 @@ public struct DiskScanner: Sendable {
             guard externality[index] else {
                 if verbose {
                     let name = entry.diskID.isEmpty ? "unidentified disk" : entry.diskID
-                    console.out("  Skipping \(name) — not external hardware.")
+                    console.out("  Skipping \(name) - not external hardware.")
                 }
                 continue
             }
@@ -272,7 +272,7 @@ public struct DiskScanner: Sendable {
                 // Safety gate: skip anything already in the mount table
                 if activeMounts.contains("/dev/\(devId)") {
                     if verbose {
-                        console.out("  Skipping \(devId) — already mounted.")
+                        console.out("  Skipping \(devId) - already mounted.")
                     }
                     continue
                 }
@@ -293,7 +293,7 @@ public struct DiskScanner: Sendable {
 
         if blockedContentTokens.contains(where: { contentType.contains($0) }) {
             if verbose {
-                console.out("  Skipping \(devId) — system partition (\(contentType)).")
+                console.out("  Skipping \(devId) - system partition (\(contentType)).")
             }
             return false
         }
@@ -302,7 +302,7 @@ public struct DiskScanner: Sendable {
         guard externalFSAllowlist.contains(contentType) else {
             if verbose {
                 let shown = contentType.isEmpty ? "(empty)" : contentType
-                console.out("  Skipping \(devId) — Content \(shown) is not camera-card-like.")
+                console.out("  Skipping \(devId) - Content \(shown) is not camera-card-like.")
             }
             return false
         }

@@ -14,13 +14,13 @@ import os
 /// appends a `__EXIT:<n>` sentinel that carries the real status back.
 enum EscalatedMount {
     private static let sentinel = "__EXIT:"
-    /// AppleScript's userCanceledErr — osascript reports the code in a trailing
+    /// AppleScript's userCanceledErr - osascript reports the code in a trailing
     /// parenthesis: `execution error: User canceled. (-128)`.
     private static let userCancelledCode = -128
 
     struct Outcome: Sendable {
         var unprivileged: MountReport.Counts
-        /// nil when the first pass left nothing for root to do — the case where
+        /// nil when the first pass left nothing for root to do - the case where
         /// the user is never asked for a password at all.
         var escalated: EscalatedMountOutcome?
         /// Timestamped console lines the root helper recorded, carried in-band
@@ -33,8 +33,8 @@ enum EscalatedMount {
     ///
     /// `diskutil mount` mounts external removable media as the logged-in user,
     /// so the first pass runs in-process with no privileges and no prompt. Only
-    /// if it leaves a volume unmounted — the raw `/sbin/mount_*` fallback needs
-    /// root — does the app re-run its own binary under the admin dialog, which
+    /// if it leaves a volume unmounted - the raw `/sbin/mount_*` fallback needs
+    /// root - does the app re-run its own binary under the admin dialog, which
     /// rescans as root and picks up whatever is left.
     static func run(scanner: DiskScanner) async -> Outcome {
         let targets: [String]
@@ -87,8 +87,8 @@ enum EscalatedMount {
 
         // Capture the helper's stderr to a temp file instead of discarding it:
         // a helper that crashes before it can emit its JSON report (dyld
-        // failure, a TCC denial as root) would otherwise be a black hole — no
-        // stdout, no stderr — in exactly the privileged path a diagnostic
+        // failure, a TCC denial as root) would otherwise be a black hole - no
+        // stdout, no stderr - in exactly the privileged path a diagnostic
         // report exists to explain. Read on failure, below; always cleaned up.
         let stderrPath = (NSTemporaryDirectory() as NSString)
             .appendingPathComponent("lifsaver-helper-\(UUID().uuidString).stderr")
@@ -133,7 +133,7 @@ enum EscalatedMount {
     }
 
     /// Appends the helper's captured stderr to an error message when there is
-    /// any — the difference between "unreadable helper output" and knowing the
+    /// any - the difference between "unreadable helper output" and knowing the
     /// helper died on a code-signing or permission error.
     private static func annotate(_ message: String, withStderr stderr: String) -> String {
         stderr.isEmpty ? message : message + "\n\nhelper stderr:\n" + stderr
@@ -194,7 +194,7 @@ enum EscalatedMount {
 
         // A helper that reached this point emitted its report, so a root-side
         // failure it detected arrives in-band via `error` and its timestamped
-        // `log` — richer than the raw stderr, which only helps when the helper
+        // `log` - richer than the raw stderr, which only helps when the helper
         // died before it could report at all.
         if let error = report.error {
             return (.error(error), report.log)

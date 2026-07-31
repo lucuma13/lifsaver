@@ -1,7 +1,7 @@
 #!/bin/bash
 # Produce the release artifacts from an assembled dist/Lifsaver.app:
-#   dist/lifsaver_installer_macos.pkg            — unsigned installer
-#   dist/lifsaver-<version>-macos-universal.zip  — app zip for the Homebrew cask
+#   dist/lifsaver_installer_macos.pkg            - unsigned installer
+#   dist/lifsaver-<version>-macos-universal.zip  - app zip for the Homebrew cask
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"

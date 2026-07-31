@@ -1,5 +1,5 @@
 #!/bin/bash
-# Print the lifsaver version parsed from Version.swift — the single source of
+# Print the lifsaver version parsed from Version.swift - the single source of
 # truth shared by every packaging script and workflow. Fails loudly when the
 # declaration stops matching the pattern, so an empty version can never leak
 # silently into an artifact name or a pkg manifest.

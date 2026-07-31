@@ -22,7 +22,7 @@ public struct StalledWatchState: Sendable {
         return fresh
     }
 
-    /// True while any volume is known to be stalled — drives the menu bar
+    /// True while any volume is known to be stalled - drives the menu bar
     /// icon's attention badge.
     public var hasStalled: Bool { !known.isEmpty }
 }
@@ -40,9 +40,9 @@ public enum StatusMenuModel {
             self.fsType = fsType
         }
 
-        /// "disk4s1 — msdos", or just the device when the fs type is unknown.
+        /// "disk4s1 - msdos", or just the device when the fs type is unknown.
         public var detail: String {
-            fsType.isEmpty ? devId : "\(devId) — \(fsType)"
+            fsType.isEmpty ? devId : "\(devId) - \(fsType)"
         }
     }
 
@@ -88,7 +88,7 @@ public enum StatusMenuModel {
 
         entries.append(.separator)
 
-        // Always present — reports are most needed exactly when scans fail.
+        // Always present - reports are most needed exactly when scans fail.
         entries.append(.saveReport(title: "Send Diagnostic Report"))
         // The update item is always present: it opens the latest installer once
         // a newer version is known, otherwise it triggers a manual check on
@@ -134,7 +134,7 @@ public enum StatusMenuModel {
 
     /// One line for the diagnostic report's event log, recording what the
     /// unprivileged first pass managed on its own. `fail` here is not a real
-    /// failure — those volumes go on to the escalated pass.
+    /// failure - those volumes go on to the escalated pass.
     public static func unprivilegedMountEventLine(for counts: MountReport.Counts) -> String {
         "unprivileged mount pass: \(counts.ok) mounted, \(counts.fail) need elevation, \(counts.skip) skipped"
     }
@@ -157,7 +157,7 @@ public enum StatusMenuModel {
         case .report(let counts):
             return .report(.init(ok: unprivileged.ok + counts.ok, fail: counts.fail, skip: counts.skip))
         case .cancelled:
-            // Declining the dialog leaves the remaining volumes unmounted —
+            // Declining the dialog leaves the remaining volumes unmounted -
             // that is a failure of the mount attempt, reported alongside
             // whatever mounted before the prompt.
             return .report(.init(ok: unprivileged.ok, fail: unprivileged.fail))
@@ -179,7 +179,7 @@ public enum StatusMenuModel {
         case .report(let counts):
             if counts.fail > 0 {
                 // With several volumes in play a bare "failed" would hide the
-                // partial result — summarise both halves.
+                // partial result - summarise both halves.
                 guard counts.ok + counts.fail + counts.skip > 1 else { return "Mount failed" }
                 return "Mount failed (\(counts.ok) mounted, \(counts.fail) failed)"
             }
@@ -187,7 +187,7 @@ public enum StatusMenuModel {
                 let noun = counts.ok == 1 ? "volume" : "volumes"
                 return "Mounted \(counts.ok) \(noun)."
             }
-            return "Nothing mounted — volumes were skipped (already mounted or being checked)."
+            return "Nothing mounted - volumes were skipped (already mounted or being checked)."
         case .error:
             return "Mount failed"
         }

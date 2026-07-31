@@ -20,7 +20,7 @@ disabled_rules:
   # invalid UTF-8 in tool output must never abort the pipeline
   - optional_data_string_conversion
 # type-aware rules for `swiftlint analyze` (needs a compilation database;
-# see scripts/lint/analyze.sh) — ignored by plain `swiftlint lint`
+# see scripts/lint/analyze.sh) - ignored by plain `swiftlint lint`
 analyzer_rules:
   - capture_variable
   - typesafe_array_init

@@ -3,7 +3,7 @@ import Testing
 
 @testable import LifsaverKit
 
-/// Real-subprocess tests for DefaultProcessRunner — everything else in the
+/// Real-subprocess tests for DefaultProcessRunner - everything else in the
 /// suite fakes ProcessRunning, so the genuine launch/drain/timeout paths are
 /// exercised here.
 @Suite struct DefaultProcessRunnerTests {
@@ -35,13 +35,13 @@ import Testing
 
     @Test func missingBinaryExitsNonZeroViaEnv() async throws {
         // The runner launches via /usr/bin/env, so a missing executable is a
-        // successful launch that exits 127 — not a launchFailed throw.
+        // successful launch that exits 127 - not a launchFailed throw.
         let result = try await runner.run("definitely-not-a-real-binary-\(UUID().uuidString)", [], timeout: 10)
         #expect(result.status == 127)
     }
 
     @Test func outputLargerThanPipeBufferDoesNotDeadlock() async throws {
-        // 256 KiB exceeds the 64 KiB pipe buffer — hangs unless the pipes are
+        // 256 KiB exceeds the 64 KiB pipe buffer - hangs unless the pipes are
         // drained while the child runs.
         let result = try await runner.run("head", ["-c", "262144", "/dev/zero"], timeout: 10)
         #expect(result.status == 0)

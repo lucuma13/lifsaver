@@ -1,12 +1,12 @@
 #!/bin/bash
 # Render the committed icon artwork from scripts/render/assets/:
-#   scripts/release/app-resources/AppIcon.icns          — colour lifebuoy (Finder/Dock/About)
-#   scripts/release/app-resources/MenuBarIcon*.png      — monochrome template icons (@1x/@2x/@3x)
-#   scripts/release/app-resources/MenuBarIconAlert*.png — orange, turned 45°, for the stalled state
+#   scripts/release/app-resources/AppIcon.icns          - colour lifebuoy (Finder/Dock/About)
+#   scripts/release/app-resources/MenuBarIcon*.png      - monochrome template icons (@1x/@2x/@3x)
+#   scripts/release/app-resources/MenuBarIconAlert*.png - orange, turned 45°, for the stalled state
 #
 # Developer tool, not part of the build: the rendered outputs are committed
 # (like the installer background), so this only needs re-running when a logo
-# changes — and then both targets want regenerating together, or the menu bar
+# changes - and then both targets want regenerating together, or the menu bar
 # and the Dock end up disagreeing.
 #
 # Usage: icons.sh [appicon|menubar|all]   (default: all)
@@ -88,7 +88,7 @@ make_menubar() {
 
   # Alert artwork: the same buoy turned 45° (cross bands upright rather than
   # diagonal) and painted lifebuoy orange, used when a stalled volume needs
-  # attention. Rotating here rather than at runtime is what keeps it crisp —
+  # attention. Rotating here rather than at runtime is what keeps it crisp -
   # resampling an 18px bitmap through 45° is visibly soft. The buoy is round,
   # so the turn costs no size: 826px across upright, 828px at 45°. -rotate
   # needs -background none or it fills the corners opaque and -trim can no

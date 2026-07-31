@@ -15,12 +15,12 @@ public struct MountEntry: Sendable, Equatable {
 }
 
 /// Seam over the kernel mount table so tests can fake it. Every call must
-/// return a fresh snapshot — callers use this as a race guard around mounts.
+/// return a fresh snapshot - callers use this as a race guard around mounts.
 public protocol MountTableReading: Sendable {
     func entries() throws -> [MountEntry]
 }
 
-/// Live kernel mount table via getmntinfo_r_np(3) — the same data `mount`
+/// Live kernel mount table via getmntinfo_r_np(3) - the same data `mount`
 /// prints, without a subprocess or text parsing. The _r variant is
 /// thread-safe; the plain getmntinfo shares one static buffer per process.
 public struct KernelMountTable: MountTableReading {
@@ -28,7 +28,7 @@ public struct KernelMountTable: MountTableReading {
 
     public func entries() throws -> [MountEntry] {
         // MNT_NOWAIT returns current table *membership* without re-statfs'ing
-        // every filesystem — the refresh could hang on a dead network mount,
+        // every filesystem - the refresh could hang on a dead network mount,
         // and the names we need are not statfs-derived.
         var table: UnsafeMutablePointer<statfs>?
         let count = getmntinfo_r_np(&table, MNT_NOWAIT)

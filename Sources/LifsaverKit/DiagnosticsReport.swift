@@ -15,7 +15,7 @@ import os
 public let lifsaverSupportEmail = ["alterluigi", "+", "debug", "@", "gma", "il", ".", "com"].joined()
 
 /// A parsed JSON value, so third-party output that is already structured
-/// (`diskutil`'s plists) can be embedded as native, queryable JSON  — keeping
+/// (`diskutil`'s plists) can be embedded as native, queryable JSON - keeping
 /// the whole report one uniform document.
 public enum JSONValue: Codable, Sendable {
     case string(String)
@@ -68,8 +68,8 @@ public enum JSONValue: Codable, Sendable {
 
 /// Parses `diskutil`'s plist output into native JSON so the report stays one
 /// uniform structured document. Falls back to the raw text (itself valid JSON,
-/// as a string) when the output is not a parseable plist — an `unavailable:`
-/// marker or malformed output — which is exactly the case where seeing the raw
+/// as a string) when the output is not a parseable plist - an `unavailable:`
+/// marker or malformed output - which is exactly the case where seeing the raw
 /// bytes is what you want.
 func plistAsJSON(_ text: String) -> JSONValue {
     guard
@@ -106,7 +106,7 @@ public struct DiagnosticReport: Codable, Sendable {
 
     /// The verbose re-scan run at report time. `consoleOutput` is what the
     /// scanner said as it decided; `error` is set instead of `targets` when the
-    /// scan itself threw. This is sampled *now*, not when the problem occurred —
+    /// scan itself threw. This is sampled *now*, not when the problem occurred -
     /// `liveLog` holds what happened then.
     public struct ScanTrace: Codable, Sendable {
         public var consoleOutput: [String] = []
@@ -144,7 +144,7 @@ public struct DiagnosticReport: Codable, Sendable {
     public var diskutilList: JSONValue
     public var diskInfo: [DiskInfo]
 
-    /// Pretty-printed, stable-key JSON — the form written to disk and emailed.
+    /// Pretty-printed, stable-key JSON - the form written to disk and emailed.
     public func jsonString() -> String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
@@ -172,7 +172,7 @@ public func lifsaverReportMailtoURL(reportFilename: String) -> URL? {
 ///
 /// Read-only: it re-runs the scanner verbosely and captures the raw
 /// `diskutil` plists the scanner decides from, so a missed or unmountable
-/// card can be replayed from the report alone. Generation never throws —
+/// card can be replayed from the report alone. Generation never throws -
 /// a report about a failure must not itself fail; sections that cannot be
 /// gathered say so inline instead.
 public struct DiagnosticsReporter: Sendable {
@@ -184,7 +184,7 @@ public struct DiagnosticsReporter: Sendable {
         self.mountTable = mountTable
     }
 
-    /// "lifsaver-report-20260717-1432.json" — sortable, filesystem-safe.
+    /// "lifsaver-report-20260717-1432.json" - sortable, filesystem-safe.
     public static func suggestedFilename(for date: Date = Date()) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -200,7 +200,7 @@ public struct DiagnosticsReporter: Sendable {
     ) async -> DiagnosticReport {
         let note = userNote.trimmingCharacters(in: .whitespacesAndNewlines)
         let (mountEntries, mountError) = mountTableDump()
-        // One listing serves both the raw dump and the per-disk enumeration — a
+        // One listing serves both the raw dump and the per-disk enumeration - a
         // second spawn could disagree with the first mid-report, which is
         // exactly the inconsistency a diagnostic report exists to rule out.
         let listing = await rawCommand("diskutil", ["list", "-plist"])
@@ -225,7 +225,7 @@ public struct DiagnosticsReporter: Sendable {
             version: lifsaverVersion,
             macOS: ProcessInfo.processInfo.operatingSystemVersionString,
             architecture: buildArchitecture,
-            privacyNote: "Contains disk layout, volume names, and mount paths — "
+            privacyNote: "Contains disk layout, volume names, and mount paths - "
                 + "no file contents. Review it before sharing."
         )
     }
@@ -270,7 +270,7 @@ public struct DiagnosticsReporter: Sendable {
     }
 
     private func fsckDump() async -> [String] {
-        // pgrep exits 1 when nothing matches — not an error.
+        // pgrep exits 1 when nothing matches - not an error.
         let listing = await rawCommand("pgrep", ["-fl", "fsck"])
         return listing.split(separator: "\n").map(String.init)
     }

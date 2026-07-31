@@ -1,5 +1,5 @@
 #!/bin/bash
-# Report code coverage for the built xctest bundles, and export it as LCOV —
+# Report code coverage for the built xctest bundles, and export it as LCOV -
 # the single source of coverage truth shared by `make test` and CI. Both read
 # the same profile through the same filter, so the table printed locally can
 # never describe a different set of files from the number Codecov publishes.
@@ -19,7 +19,7 @@ BIN="$(swift build --show-bin-path)"
 PROF="$BIN/codecov/default.profdata"
 LCOV="coverage.lcov"
 # Anchored on the separator, so only the Tests/ and .build/ directories drop
-# out — an unanchored 'Tests' would also swallow sources merely named for them.
+# out - an unanchored 'Tests' would also swallow sources merely named for them.
 IGNORE='(Tests|\.build)/'
 
 if [ ! -f "$PROF" ]; then

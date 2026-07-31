@@ -117,7 +117,7 @@ let iconCenterX = wifiCenterX - 31
 let iconSize: CGFloat = 13
 
 // Keep these menu items in sync with StatusMenuModel.entries.
-let separatorTag = "—separator—"
+let separatorTag = "-separator-"
 let menuItems = [
     "Mount 2 stalled volumes", separatorTag, "Send Diagnostic Report", "Check for Updates", "Settings", "Quit",
 ]
@@ -255,7 +255,7 @@ func drawBanner(_ frame: Frame) {
 /// opens a submenu.
 func drawSubmenuArrow(centerY: CGFloat) {
     let tipX = menuLeftX + menuWidth - menuInsetX
-    // Up to the tip, down to the base — a ">" pointing right.
+    // Up to the tip, down to the base - a ">" pointing right.
     let points: [(CGFloat, CGFloat)] = [(-3.4, -3.4), (0, 0), (-3.4, 3.4)]
     let path = NSBezierPath()
     for (index, point) in points.enumerated() {
@@ -309,7 +309,7 @@ func drawMenu(_ frame: Frame) {
         }
         let textColor = (isMount && frame.highlight) ? NSColor.white : color(hex: 0xffffff, alpha: 0.9)
         let font = isMount ? mountFont : menuFont
-        // "Settings" opens a submenu — show the disclosure arrow a real
+        // "Settings" opens a submenu - show the disclosure arrow a real
         // macOS menu draws in the trailing edge. Hand-drawn at a fixed size so
         // it stays within the inset, clear of the text.
         if item == submenuItem {

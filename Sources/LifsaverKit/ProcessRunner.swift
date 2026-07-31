@@ -116,7 +116,7 @@ public struct DefaultProcessRunner: ProcessRunning {
         let stderr = await stderrData
 
         // Timed out only when the watchdog fired AND its SIGKILL is what
-        // ended the child — a child that exits on its own in the same instant
+        // ended the child - a child that exits on its own in the same instant
         // is a completed command, not a timeout.
         let watchdogFired = await watchdog?.value ?? false
         if watchdogFired && childExit.killedBySignal && childExit.status == SIGKILL {
@@ -135,7 +135,7 @@ public struct DefaultProcessRunner: ProcessRunning {
     /// so a timeout can be told apart from a natural exit. `exited` flips
     /// synchronously in the handler so a late signal sender can tell "still
     /// running" from "already reaped": a SIGKILL aimed at a reaped pid can hit
-    /// an unrelated, recycled pid — as root in the escalated helper. The check
+    /// an unrelated, recycled pid - as root in the escalated helper. The check
     /// narrows that window to the instant between Foundation reaping the child
     /// and the handler running.
     private static func terminationStream(
@@ -156,7 +156,7 @@ public struct DefaultProcessRunner: ProcessRunning {
     }
 
     /// SIGKILLs `pid` once `timeout` elapses; the task's value reports
-    /// whether it fired. An infinite timeout means no watchdog at all — for
+    /// whether it fired. An infinite timeout means no watchdog at all - for
     /// commands that legitimately wait on the user (e.g. a password dialog).
     private static func watchdog(
         pid: pid_t, timeout: TimeInterval, exited: OSAllocatedUnfairLock<Bool>
@@ -164,7 +164,7 @@ public struct DefaultProcessRunner: ProcessRunning {
         guard timeout.isFinite else { return nil }
         return Task {
             guard (try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))) != nil else {
-                return false  // cancelled — the child exited in time
+                return false  // cancelled - the child exited in time
             }
             // A child that exited right at the timeout boundary was reaped; its
             // pid may already belong to someone else. Never kill it.

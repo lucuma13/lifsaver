@@ -38,7 +38,7 @@ public enum PrereleaseIdentifier: Equatable, Sendable {
 }
 
 /// Minimal semantic version: `major.minor.patch`, optional leading "v", with
-/// SemVer-compliant pre-release handling. Unparsable input yields nil —
+/// SemVer-compliant pre-release handling. Unparsable input yields nil -
 /// "cannot compare, stay quiet".
 public struct SemanticVersion: Comparable, Equatable, Sendable {
     public let components: [Int]
@@ -51,7 +51,7 @@ public struct SemanticVersion: Comparable, Equatable, Sendable {
         if text.hasPrefix("v") || text.hasPrefix("V") {
             text = String(text.dropFirst())
         }
-        // Build metadata ("+2024") never affects precedence — discard it.
+        // Build metadata ("+2024") never affects precedence - discard it.
         if let plus = text.firstIndex(of: "+") {
             text = String(text[..<plus])
         }
@@ -243,7 +243,7 @@ public final class UpdateChecker: Sendable {
         }
     }
 
-    /// The newest known release version, from cache or a finished fetch —
+    /// The newest known release version, from cache or a finished fetch -
     /// nil when up to date or unknown. For GUI surfaces (menu items).
     public func knownNewerVersion() -> String? {
         guard let known = latestBox.withLock({ $0 }), isNewer(latest: known, current: currentVersion) else {
@@ -253,7 +253,7 @@ public final class UpdateChecker: Sendable {
     }
 
     /// Force a fresh check now, ignoring the cache and the version gate that
-    /// only governs the passive launch check — the user asked for this.
+    /// only governs the passive launch check - the user asked for this.
     /// Refreshes the known version and cache and reports the outcome so the GUI
     /// can acknowledge the manual "Check for Updates" action; a newer version
     /// is also reflected by `knownNewerVersion()`.

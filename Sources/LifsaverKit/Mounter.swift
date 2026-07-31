@@ -13,7 +13,7 @@ public enum MountOutcome: String, Sendable {
 public protocol FileOperating: Sendable {
     func createDirectory(at path: String) throws
     /// Best-effort removal that only succeeds on an EMPTY directory (rmdir
-    /// semantics) — must never delete data that landed under a mount point.
+    /// semantics) - must never delete data that landed under a mount point.
     func removeEmptyDirectory(at path: String)
 }
 
@@ -63,7 +63,7 @@ public struct Mounter: Sendable {
     /// Strategy (macOS Tahoe / LIFS-aware):
     ///   1. Re-confirm the device is still unmounted (race-condition guard).
     ///   2. Stand down if macOS is mid consistency check on the device.
-    ///   3. Try `diskutil mount` — preferred; handles LIFS sandboxing.
+    ///   3. Try `diskutil mount` - preferred; handles LIFS sandboxing.
     ///   4. Fall back to raw mount binaries if diskutil fails.
     public func execute(_ devId: String) async -> MountOutcome {
         if verbose {
@@ -74,13 +74,13 @@ public struct Mounter: Sendable {
         // (table unreadable) proceeds: diskutil mount on an already mounted
         // volume is a harmless no-op, skipping a stalled one is not.
         if scanner.isCurrentlyMounted(devId) == true {
-            console.out("  SKIPPED — /dev/\(devId) became mounted since scan.")
+            console.out("  SKIPPED - /dev/\(devId) became mounted since scan.")
             return .skip
         }
 
-        // Never fight a repair in progress — wait for macOS to finish or bail out.
+        // Never fight a repair in progress - wait for macOS to finish or bail out.
         if await scanner.isFsckActive(devId) {
-            console.out("  SKIPPED — macOS is running a consistency check (fsck) on /dev/\(devId).")
+            console.out("  SKIPPED - macOS is running a consistency check (fsck) on /dev/\(devId).")
             console.out("  Let it finish and mount again from the menu; mounting mid-check risks corrupting the card.")
             return .skip
         }
@@ -97,7 +97,7 @@ public struct Mounter: Sendable {
         if allowRawFallback {
             console.out("  CRITICAL ERROR: All mount strategies rejected /dev/\(devId)")
         } else if verbose {
-            console.out("  diskutil mount rejected /dev/\(devId) — needs elevated privileges.")
+            console.out("  diskutil mount rejected /dev/\(devId) - needs elevated privileges.")
         }
         return .fail
     }
@@ -105,7 +105,7 @@ public struct Mounter: Sendable {
     /// Try `diskutil mount` first (preferred; handles LIFS sandboxing), then
     /// fall back to raw mount binaries.  Verifies against the live mount table
     /// after each attempt; when the table cannot be read (nil), the mount
-    /// binary's zero exit stands — an unreadable table must not turn a
+    /// binary's zero exit stands - an unreadable table must not turn a
     /// successful mount into a spurious failure (and, one level up, into an
     /// unwarranted admin password prompt).
     func attemptMounts(_ devId: String, fsType: String) async -> Bool {
@@ -133,7 +133,7 @@ public struct Mounter: Sendable {
                 return true
             }
             // The mount binary exited 0 but the volume never appeared in the
-            // mount table — reclaim the mount-point directory it was given.
+            // mount table - reclaim the mount-point directory it was given.
             fileOps.removeEmptyDirectory(at: rawMountPoint(devId))
         }
 
@@ -167,7 +167,7 @@ public struct Mounter: Sendable {
         return result
     }
 
-    /// Where rawMount grafts the volume — the raw binaries need an explicit,
+    /// Where rawMount grafts the volume - the raw binaries need an explicit,
     /// pre-created mount point (diskutil manages its own under /Volumes).
     func rawMountPoint(_ devId: String) -> String {
         "/Volumes/Camera_Data_\(devId)"
@@ -250,7 +250,7 @@ public struct Mounter: Sendable {
             }
         }
 
-        // Both failed — clean up the empty directory we created
+        // Both failed - clean up the empty directory we created
         fileOps.removeEmptyDirectory(at: mountPoint)
 
         return false
