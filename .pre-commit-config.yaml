@@ -56,13 +56,22 @@ repos:
       - id: swift-format
         name: swift-format
         entry: swift format format --in-place --parallel
+        args:
+          - --configuration
+          - '{"version":1,"lineLength":120,"indentation":{"spaces":4}}'
         language: system
         types: [swift]
       - id: swift-format-lint
         name: swift-format lint
         entry: swift format lint --strict --parallel
+        args:
+          - --configuration
+          - '{"version":1,"lineLength":120,"indentation":{"spaces":4}}'
         language: system
         types: [swift]
+  # Swift linter
+  - repo: local
+    hooks:
       - id: swiftlint
         name: swiftlint
         entry: swiftlint lint --strict --quiet
