@@ -149,11 +149,7 @@ public struct GitHubReleaseFetcher: LatestReleaseFetching {
     public init() {}
 
     public func fetchLatestTag(repo: String, userAgent: String, timeout: TimeInterval) async -> String? {
-        // Not /releases/latest: GitHub defines that as the newest release NOT
-        // marked prerelease (404 when only prereleases exist), which would
-        // blind the checker to this project's beta releases. The newest release
-        // of any kind is the first element of /releases.
-        guard let url = URL(string: "https://api.github.com/repos/\(repo)/releases?per_page=1") else {
+        guard let url = URL(string: "https://api.github.com/repos/\(repo)/releases/latest") else {
             return nil
         }
         var request = URLRequest(url: url, timeoutInterval: timeout)
@@ -164,8 +160,8 @@ public struct GitHubReleaseFetcher: LatestReleaseFetching {
             let (bytes, response) = try? await URLSession.shared.bytes(for: request),
             let http = response as? HTTPURLResponse, http.statusCode == 200,
             let data = try? await Self.collect(bytes, limit: Self.maxResponseBytes),
-            let releases = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
-            let tagName = releases.first?["tag_name"] as? String
+            let release = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let tagName = release["tag_name"] as? String
         else { return nil }
         return tagName
     }
