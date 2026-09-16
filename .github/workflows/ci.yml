@@ -71,7 +71,7 @@ jobs:
           files: .github/workflows/**.yml
       # CI workflow security audit
       - name: Audit CI workflows (zizmor)
-        uses: zizmorcore/zizmor-action@192e21d79ab29983730a13d1382995c2307fbcaa # v0.5.7
+        uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
         with:
           advanced-security: false
   # JOB 3: Build and test
@@ -93,7 +93,7 @@ jobs:
       - name: Report and export coverage (LCOV)
         run: ./scripts/coverage.sh
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
+        uses: codecov/codecov-action@0b35c9ecc4f0529d0eb674914510c22f85b196b4 # v7.1.0
         with:
           files: coverage.lcov
           fail_ci_if_error: false
