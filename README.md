@@ -10,7 +10,7 @@
 
 ### 📖 Background
 
-On modern macOS, external cards mount through the Live Item File System (LIFS), the userspace layer of Apple's LiveFS framework, which handles these volumes via user-space extensions (`livefiles_exfat`, `livefiles_msdos`) instead of kernel extensions. When two cards carry the same label (e.g. factory default `Untitled`) macOS is supposed to disambiguate them with a numeric suffix (e.g. `/Volumes/Untitled 1`). In practice, on the LIFS path this disambiguation often fails: `diskarbitrationd` probes the volume, begins the mount, then aborts with `unable to mount … (status code 0x00000204)`. The card gets a device node but never finishes mounting – no error dialog, it just doesn't appear in Finder.
+On macOS, external cards mount through the LIFS, the kernel bridge for Apple's LiveFS and FSKit layer. When two cards carry the same label (e.g. factory default `Untitled`) macOS is supposed to disambiguate them with a numeric suffix (e.g. `/Volumes/Untitled 1`). In practice, on the LIFS path this disambiguation often fails: `diskarbitrationd` probes the volume, begins the mount, then aborts with `unable to mount … (status code 0x00000204)`. The card gets a device node but never finishes mounting – no error dialog, it just doesn't appear in Finder.
 
 `lifsaver` watches for exactly this: a card that appears but stalls before mounting. If macOS is mid consistency-check (`fsck`) it holds off rather than race the repair; otherwise, it tries `diskutil mount` and then the raw `/sbin/mount_exfat` and `/sbin/mount_msdos` binaries (this requires admin privileges).
 
