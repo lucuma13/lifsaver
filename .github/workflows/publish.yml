@@ -12,7 +12,7 @@ jobs:
   # JOB 0: Run the full CI suite as a safety gate for every channel
   ci:
     name: CI
-    uses: ./.github/workflows/ci.yml
+    uses: $/.github/workflows/ci.yml
     permissions:
       contents: read
   # JOB 1: Build the universal artifacts and attach them to the release
