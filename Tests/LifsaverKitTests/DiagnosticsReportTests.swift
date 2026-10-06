@@ -13,9 +13,10 @@ private struct StubError: Error {}
     private func reporter(
         runner: FakeProcessRunner = diskutilRunner(
             list: diskutilPlistExternalExfat, info: ["disk4": infoExternal]),
-        mountTable: any MountTableReading = FakeMountTable()
+        mountTable: any MountTableReading = FakeMountTable(),
+        fskitSettings: any FSKitSettingsReading = FakeFSKitSettings()
     ) -> DiagnosticsReporter {
-        DiagnosticsReporter(runner: runner, mountTable: mountTable)
+        DiagnosticsReporter(runner: runner, mountTable: mountTable, fskitSettings: fskitSettings)
     }
 
     @Test func metaCarriesVersionAndPrivacyNote() async {
@@ -68,6 +69,33 @@ private struct StubError: Error {}
         ]
         let report = await reporter().generate(liveLog: lines)
         #expect(report.liveLog == lines)
+    }
+
+    @Test func fskitSettingsAndGhostPathsAreCaptured() async {
+        // "Untitled" was renamed to A001: fskitd still reserves the old path.
+        let settings = FakeFSKitSettings(mounts: [
+            ("A001", "/Volumes/Untitled"), ("Untitled", "/Volumes/Untitled 1"),
+        ])
+        let table = FakeMountTable([
+            MountEntry(device: "/dev/disk6s1", mountPoint: "/Volumes/A001"),
+            MountEntry(device: "/dev/disk7s1", mountPoint: "/Volumes/Untitled 1"),
+        ])
+        let fskit = await reporter(mountTable: table, fskitSettings: settings).generate().fskit
+        #expect(fskit.error == nil)
+        #expect(fskit.ghostMountPoints == ["/Volumes/Untitled"])
+        #expect(fskit.settings?["bootUUID"]?.stringValue == "1D5B3626-8305-4FA6-8FED-845592853F45")
+    }
+
+    @Test func absentFSKitSettingsMeanNoRecords() async {
+        let fskit = await reporter().generate().fskit
+        #expect(fskit.settings == nil)
+        #expect(fskit.ghostMountPoints.isEmpty)
+        #expect(fskit.error == nil)
+    }
+
+    @Test func unreadableFSKitSettingsAreReportedInline() async {
+        let fskit = await reporter(fskitSettings: FakeFSKitSettings(error: StubError())).generate().fskit
+        #expect(fskit.error?.contains("unavailable:") == true)
     }
 
     @Test func failingCommandsNeverAbortTheReport() async {

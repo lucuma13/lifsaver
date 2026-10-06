@@ -79,6 +79,7 @@ private func runHelper(
     let status = await EscalatedMountHelper.run(
         runner: runner,
         mountTable: mountTable,
+        fskitSettings: FakeFSKitSettings(),
         fileOps: FakeFileOperations(),
         console: console.console,
         emit: { emitted.append($0) }

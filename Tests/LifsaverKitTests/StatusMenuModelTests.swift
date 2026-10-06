@@ -13,20 +13,25 @@ import Testing
         newerVersion: String? = nil,
         showLaunchAtLogin: Bool = false,
         launchAtLoginEnabled: Bool = false,
-        automaticUpdatesEnabled: Bool = true
+        automaticUpdatesEnabled: Bool = true,
+        blockingGhosts: [Ghost] = [],
+        remountAfterRenameEnabled: Bool = false
     ) -> [StatusMenuModel.Entry] {
         StatusMenuModel.entries(
             state: state,
             newerVersion: newerVersion,
             showLaunchAtLogin: showLaunchAtLogin,
             launchAtLoginEnabled: launchAtLoginEnabled,
-            automaticUpdatesEnabled: automaticUpdatesEnabled
+            automaticUpdatesEnabled: automaticUpdatesEnabled,
+            blockingGhosts: blockingGhosts,
+            remountAfterRenameEnabled: remountAfterRenameEnabled
         )
     }
 
     /// The "Settings" submenu with the test defaults (unbundled, auto-check on).
     private let moreOptions = StatusMenuModel.Entry.moreOptions(
-        showStartAtLogin: false, startAtLoginEnabled: false, automaticUpdatesEnabled: true)
+        showStartAtLogin: false, startAtLoginEnabled: false, automaticUpdatesEnabled: true,
+        remountAfterRenameEnabled: false)
 
     @Test func scanningShowsPlaceholder() {
         #expect(
@@ -103,19 +108,56 @@ import Testing
     @Test func moreOptionsHidesStartAtLoginWhenUnbundled() {
         #expect(
             entries(state: .scanning).contains(
-                .moreOptions(showStartAtLogin: false, startAtLoginEnabled: false, automaticUpdatesEnabled: true)))
+                .moreOptions(
+                    showStartAtLogin: false, startAtLoginEnabled: false, automaticUpdatesEnabled: true,
+                    remountAfterRenameEnabled: false)))
 
         let bundled = entries(state: .scanning, showLaunchAtLogin: true, launchAtLoginEnabled: true)
         #expect(
             bundled.contains(
-                .moreOptions(showStartAtLogin: true, startAtLoginEnabled: true, automaticUpdatesEnabled: true)))
+                .moreOptions(
+                    showStartAtLogin: true, startAtLoginEnabled: true, automaticUpdatesEnabled: true,
+                    remountAfterRenameEnabled: false)))
     }
 
     @Test func moreOptionsReflectsAutomaticUpdatesOptOut() {
         let optedOut = entries(state: .scanning, automaticUpdatesEnabled: false)
         #expect(
             optedOut.contains(
-                .moreOptions(showStartAtLogin: false, startAtLoginEnabled: false, automaticUpdatesEnabled: false)))
+                .moreOptions(
+                    showStartAtLogin: false, startAtLoginEnabled: false, automaticUpdatesEnabled: false,
+                    remountAfterRenameEnabled: false)))
+    }
+
+    @Test func moreOptionsReflectsRemountAfterRename() {
+        #expect(
+            entries(state: .scanning, remountAfterRenameEnabled: true).contains(
+                .moreOptions(
+                    showStartAtLogin: false, startAtLoginEnabled: false, automaticUpdatesEnabled: true,
+                    remountAfterRenameEnabled: true)))
+    }
+
+    @Test func blockingGhostWithOwnerOffersRemountAfterScanState() {
+        let ghost = Ghost(
+            record: FSKitMountRecord(displayName: "A001", mountedOn: "/Volumes/Untitled", volumeUUID: "U"),
+            ownerDevice: "disk6s1", ownerMountPoint: "/Volumes/A001")
+        let result = entries(state: .results([]), blockingGhosts: [ghost])
+        #expect(
+            Array(result.prefix(3)) == [
+                .disabled("No stalled volumes detected"),
+                .remountGhost(
+                    title: "\"A001\" is blocking the next \"Untitled\" card - Remount \"A001\"",
+                    ownerDevice: "disk6s1"),
+                .separator,
+            ])
+    }
+
+    @Test func leakedGhostShowsRestartHintInstead() {
+        let leak = Ghost(
+            record: FSKitMountRecord(displayName: "A001", mountedOn: "/Volumes/Untitled 1", volumeUUID: "U"))
+        let result = entries(state: .scanning, blockingGhosts: [leak])
+        #expect(result[1] == .disabled("macOS still reserves /Volumes/Untitled 1 - restart the Mac to free it"))
+        #expect(!result.contains { if case .remountGhost = $0 { true } else { false } })
     }
 
     /// Reports are most needed exactly when scans fail, so the item must

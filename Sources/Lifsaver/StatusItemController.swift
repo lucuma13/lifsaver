@@ -34,8 +34,9 @@ private let installerAssetName = "lifsaver_installer_macos.pkg"
 /// weeks discovering releases, instead of only ever checking at launch.
 private let updateRecheckInterval: TimeInterval = 6 * 60 * 60
 
-/// User preferences for auto updates and start at login.
+/// User preferences for auto updates, start at login, and remounting renamed cards.
 private let automaticUpdatesDefaultsKey = "AutomaticUpdatesEnabled"
+private let remountAfterRenameDefaultsKey = "RemountAfterRenameEnabled"
 private let loginItemDefaultAppliedKey = "DidApplyLoginItemDefault"
 
 /// Owns the status-bar item and its menu. A DiskArbitration watcher rescans
@@ -77,8 +78,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// Recent scan/mount outcomes, embedded in diagnostic reports.
     private var recentEvents: [String] = []
 
+    private var blockingGhosts: [Ghost] = []
+    private var seenGhosts: Set<String> = []
+    private var autoRemountTried: Set<String> = []
+
     private let baseIcon: NSImage?
-    private let attentionIcon: NSImage?
+    private let ghostIcon: NSImage?
+    private let stalledIcon: NSImage?
 
     override init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -93,16 +99,17 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             )
         base?.isTemplate = true
         baseIcon = base
+        ghostIcon = base.map { Self.dotVariant(of: $0) }
         // The alert artwork is pre-rendered (see scripts/render/icons.sh) because turning
         // it 45° here would resample an 18px bitmap and soften it. Deliberately
         // not a template image - the orange is the signal, so the system must
         // not tint it away. Unbundled runs have no PNG to load and fall back to
-        // punching a dot out of whatever base we ended up with.
+        // an orange-tinted dot variant, so it stays distinct from the ghost dot.
         if let alert = NSImage(named: "MenuBarIconAlert") {
             alert.isTemplate = false
-            attentionIcon = alert
+            stalledIcon = alert
         } else {
-            attentionIcon = base.map(Self.attentionVariant(of:))
+            stalledIcon = base.map { Self.dotVariant(of: $0, tint: .systemOrange) }
         }
 
         super.init()
@@ -112,7 +119,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         refreshIcon()
 
         // Auto updates and start-at-login are both opt-out.
-        UserDefaults.standard.register(defaults: [automaticUpdatesDefaultsKey: true])
+        UserDefaults.standard.register(defaults: [
+            automaticUpdatesDefaultsKey: true,
+            remountAfterRenameDefaultsKey: false,
+        ])
         applyDefaultLoginItemIfNeeded()
 
         Notifier.installClickHandler { [weak self] in self?.startMount() }
@@ -179,16 +189,21 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 // time, where Mounter re-checks.
                 let fsckListing = await scanner.fsckListing()
                 let settled = devices.filter { !scanner.isFsckActive($0, listing: fsckListing) }
+                // Evaluated on every scan, stalled cards or not: a rename is a
+                // path change, so the dot appears right after it and clears
+                // once the owner is ejected or a lower path frees up.
+                let ghosts = await scanner.ghosts()
                 self?.finishScan(
                     .results(targets),
                     settled: settled,
                     fsckPending: settled.count != devices.count,
+                    ghosts: ghosts,
                     generation: generation
                 )
             } catch {
                 NSLog("lifsaver scan failed: %@", "\(error)")
                 self?.logEvent("scan failed: \(error)")
-                self?.finishScan(.failed, settled: [], fsckPending: false, generation: generation)
+                self?.finishScan(.failed, settled: [], fsckPending: false, ghosts: nil, generation: generation)
             }
         }
     }
@@ -197,6 +212,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         _ state: StatusMenuModel.ScanState,
         settled: [String],
         fsckPending: Bool,
+        ghosts: [Ghost]?,
         generation: Int
     ) {
         guard generation == scanGeneration else { return }
@@ -208,6 +224,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             let newlyStalled = stalledWatch.update(stalled: settled)
             if let body = StatusMenuModel.stalledNotificationBody(newCount: newlyStalled.count) {
                 Notifier.post(title: "lifsaver", body: body, category: Notifier.stalledVolumeCategory)
+            }
+            if let ghosts {
+                updateGhosts(ghosts)
             }
             refreshIcon()
         }
@@ -227,30 +246,45 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func refreshIcon() {
         guard let button = statusItem.button else { return }
-        let attention = stalledWatch.hasStalled
-        button.image = (attention ? attentionIcon : baseIcon) ?? baseIcon
-        button.toolTip =
-            attention
-            ? "lifsaver - stalled volume detected"
-            : "lifsaver - mount stalled camera cards"
+        let state = MenuBarIconState.current(
+            hasStalled: stalledWatch.hasStalled, hasBlockingGhost: !blockingGhosts.isEmpty)
+        switch state {
+        case .stalled:
+            button.image = stalledIcon ?? baseIcon
+            button.toolTip = "lifsaver - stalled volume detected"
+        case .ghost:
+            button.image = ghostIcon ?? baseIcon
+            button.toolTip = blockingGhosts.first.map {
+                "lifsaver - \"\($0.ownerName)\" is blocking the next \"\($0.blockedLabel)\" card"
+            }
+        case .normal:
+            button.image = baseIcon
+            button.toolTip = "lifsaver - mount stalled camera cards"
+        }
     }
 
-    /// The menu bar icon with an alert dot in the lower-right corner, punched
-    /// out of the artwork so the dot stays legible at menu bar size. Still a
-    /// template image: the system supplies the colour.
-    private static func attentionVariant(of base: NSImage) -> NSImage {
+    /// The menu bar icon with a dot in the lower-right corner, punched out of
+    /// the artwork so the dot stays legible at menu bar size. Without a tint
+    /// it stays a template image (the system supplies the colour): the ghost
+    /// icon. Tinted, it stands in for the stalled artwork on unbundled runs.
+    private static func dotVariant(of base: NSImage, tint: NSColor? = nil) -> NSImage {
         let image = NSImage(size: base.size, flipped: false) { rect in
             base.draw(in: rect)
+            if let tint {
+                tint.setFill()
+                rect.fill(using: .sourceAtop)
+            }
             let dotSide = rect.width * 0.4
             let dot = NSRect(x: rect.maxX - dotSide, y: 0, width: dotSide, height: dotSide)
             NSColor.black.setFill()
             NSGraphicsContext.current?.compositingOperation = .destinationOut
             NSBezierPath(ovalIn: dot.insetBy(dx: -rect.width * 0.08, dy: -rect.width * 0.08)).fill()
             NSGraphicsContext.current?.compositingOperation = .sourceOver
+            (tint ?? .black).setFill()
             NSBezierPath(ovalIn: dot).fill()
             return true
         }
-        image.isTemplate = true
+        image.isTemplate = tint == nil
         return image
     }
 
@@ -264,7 +298,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             newerVersion: updateChecker.knownNewerVersion(),
             showLaunchAtLogin: Bundle.main.bundleIdentifier != nil,
             launchAtLoginEnabled: launchAtLoginEnabled,
-            automaticUpdatesEnabled: automaticUpdatesEnabled
+            automaticUpdatesEnabled: automaticUpdatesEnabled,
+            blockingGhosts: blockingGhosts,
+            remountAfterRenameEnabled: remountAfterRenameEnabled
         )
         for entry in entries {
             menu.addItem(menuItem(for: entry))
@@ -282,13 +318,21 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         guard !mountInProgress else { return }
         mountInProgress = true
 
-        // The unprivileged pass runs in-process; only if it leaves something
-        // unmounted does this suspend on the password dialog, whose runner does
-        // its blocking pipe reads on GCD, off the main actor.
+        // Stalls a ghost explains get their choice first; whatever is left
+        // takes today's path. The unprivileged pass runs in-process; only if
+        // it leaves something unmounted does this suspend on the password
+        // dialog, whose runner does its blocking pipe reads on GCD, off the
+        // main actor.
         let scanner = self.scanner
         Task { [weak self] in
+            guard let self else { return }
+            guard await resolveGhostStalls() == .mountRest else {
+                mountInProgress = false
+                diskWatcher?.poke()
+                return
+            }
             let outcome = await EscalatedMount.run(scanner: scanner)
-            self?.finishMount(outcome)
+            finishMount(outcome)
         }
     }
 
@@ -457,6 +501,210 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 }
 
+// MARK: - Renamed cards (ghosts)
+
+extension StatusItemController {
+    /// Takes the ghosts from the latest scan: logs new ones, keeps the
+    /// blocking ones for the dot and menu, and remounts owners when the user
+    /// opted in.
+    private func updateGhosts(_ ghosts: [Ghost]) {
+        let keys = Set(ghosts.map(Self.key(for:)))
+        for ghost in ghosts where !seenGhosts.contains(Self.key(for: ghost)) {
+            let blocking = scanner.isBlocking(ghost) ? "blocking" : "not blocking yet"
+            if let owner = ghost.ownerDevice {
+                logEvent(
+                    "ghost: fskitd holds \(ghost.record.mountedOn) for \"\(ghost.ownerName)\" (\(owner), "
+                        + "now at \(ghost.ownerMountPoint ?? "?")) - renamed while mounted; \(blocking)")
+            } else {
+                // No mounted volume owns it - not the known rename trigger.
+                // Remounting cannot help; only a restart clears it.
+                let line =
+                    "LEAK: fskitd holds \(ghost.record.mountedOn) for \"\(ghost.record.displayName)\" "
+                    + "(\(ghost.record.volumeUUID)) but no mounted volume owns it; \(blocking)"
+                logEvent(line)
+                quietConsole.err(line)
+            }
+        }
+        seenGhosts = keys
+        autoRemountTried.formIntersection(keys)
+        blockingGhosts = ghosts.filter(scanner.isBlocking)
+
+        guard remountAfterRenameEnabled, !mountInProgress else { return }
+        if let ghost = ghosts.first(where: { !$0.isLeak && !autoRemountTried.contains(Self.key(for: $0)) }) {
+            autoRemountTried.insert(Self.key(for: ghost))
+            logEvent("remounting \"\(ghost.ownerName)\" automatically to release \(ghost.record.mountedOn)")
+            runRemount(ghost, interactive: false)
+        }
+    }
+
+    private static func key(for ghost: Ghost) -> String {
+        "\(ghost.record.mountedOn)|\(ghost.record.volumeUUID)"
+    }
+
+    private enum GhostStallResolution {
+        /// Run the usual mount flow for whatever is still stalled.
+        case mountRest
+        /// Every stalled card was dealt with here.
+        case handled
+        case cancelled
+    }
+
+    /// Stalled cards refused on the same ghost path, handled as one.
+    private struct GhostStallGroup {
+        let ghost: Ghost
+        let label: String
+        var devIds: [String]
+    }
+
+    /// For stalled cards a ghost explains, ask before mounting: remount the
+    /// renamed owner (which clears the ghost), Mount Anyway (the raw fallback,
+    /// which leaves it), or Cancel. Stalls with another cause pass through.
+    private func resolveGhostStalls() async -> GhostStallResolution {
+        guard let targets = try? await scanner.scanTargets() else { return .mountRest }
+        var groups: [GhostStallGroup] = []
+        for devId in targets {
+            guard let explanation = await scanner.explainStall(devId) else { continue }
+            if let index = groups.firstIndex(where: { $0.ghost.record == explanation.ghost.record }) {
+                groups[index].devIds.append(devId)
+            } else {
+                groups.append(GhostStallGroup(ghost: explanation.ghost, label: explanation.label, devIds: [devId]))
+            }
+        }
+        guard !groups.isEmpty else { return .mountRest }
+
+        var remounted: Set<String> = []
+        for group in groups {
+            guard let mounted = await resolve(group) else { return .cancelled }
+            remounted.formUnion(mounted)
+        }
+        return Set(targets).isSubset(of: remounted) ? .handled : .mountRest
+    }
+
+    /// One ghost's stalled cards. Returns the cards a remount mounted (empty
+    /// when they are left to the usual flow), or nil when the user stopped.
+    private func resolve(_ group: GhostStallGroup) async -> [String]? {
+        let ghost = group.ghost
+        let cards = group.devIds.joined(separator: ", ")
+        if ghost.isLeak {
+            logEvent("LEAK: stall of \(cards) - \(ghost.record.mountedOn) held with no mounted owner")
+            guard presentAlert(StatusMenuModel.leakAlert(ghost, label: group.label), style: .warning) == 0 else {
+                logEvent("mount cancelled at the leak alert")
+                return nil
+            }
+            logEvent("user chose Mount Anyway for \(cards)")
+            return []
+        }
+
+        logEvent("stall of \(cards) explained: \(ghost.record.mountedOn) held by \"\(ghost.ownerName)\"")
+        let offer = StatusMenuModel.ghostStallAlert(ghost, label: group.label, cardCount: group.devIds.count)
+        switch presentAlert(offer) {
+        case 0:
+            break
+        case 1:
+            logEvent("user chose Mount Anyway for \(cards)")
+            return []
+        default:
+            logEvent("mount cancelled at the remount offer")
+            return nil
+        }
+
+        logEvent("user chose to remount \"\(ghost.ownerName)\"")
+        let outcome = await GhostRemounter(scanner: scanner).remount(ghost, stalled: group.devIds)
+        logEvent(StatusMenuModel.ghostRemountEventLine(ghost, outcome: outcome))
+        if case .remounted(_, let mounted, _, _) = outcome {
+            let body = StatusMenuModel.ghostRemountNotificationBody(ghost, outcome: outcome, announceBareRemount: true)
+            body.map { Notifier.post(title: "lifsaver", body: $0) }
+            return mounted
+        }
+        // Refused or failed: Mount Anyway stays on offer, except for an owner
+        // left unmounted, which stops everything.
+        let critical = outcome == .ownerNotRemounted
+        let refusal = StatusMenuModel.ghostRemountRefusedAlert(ghost, outcome: outcome, offerMountAnyway: true)
+        guard let refusal, presentAlert(refusal, style: critical ? .critical : .warning) == 0, !critical else {
+            logEvent("mount stopped after the remount of \"\(ghost.ownerName)\" failed")
+            return nil
+        }
+        logEvent("user chose Mount Anyway for \(cards)")
+        return []
+    }
+
+    @objc private func remountGhostClicked(_ sender: NSMenuItem) {
+        guard
+            let owner = sender.representedObject as? String,
+            let ghost = blockingGhosts.first(where: { $0.ownerDevice == owner })
+        else { return }
+        logEvent("user chose to remount \"\(ghost.ownerName)\" from the menu")
+        runRemount(ghost, interactive: true)
+    }
+
+    /// Remount a ghost's owner outside the mount flow (menu item or the
+    /// automatic setting), taking along any card already stalled behind it.
+    private func runRemount(_ ghost: Ghost, interactive: Bool) {
+        guard !mountInProgress else { return }
+        mountInProgress = true
+        let scanner = self.scanner
+        Task { [weak self] in
+            var stalled: [String] = []
+            for devId in (try? await scanner.scanTargets()) ?? [] {
+                guard await scanner.ghostRecord(blocking: devId)?.record == ghost.record else { continue }
+                stalled.append(devId)
+            }
+            let outcome = await GhostRemounter(scanner: scanner).remount(ghost, stalled: stalled)
+            self?.finishRemount(ghost, outcome: outcome, interactive: interactive)
+        }
+    }
+
+    private func finishRemount(_ ghost: Ghost, outcome: GhostRemounter.Outcome, interactive: Bool) {
+        mountInProgress = false
+        logEvent(StatusMenuModel.ghostRemountEventLine(ghost, outcome: outcome))
+        let body = StatusMenuModel.ghostRemountNotificationBody(
+            ghost, outcome: outcome, announceBareRemount: interactive)
+        body.map { Notifier.post(title: "lifsaver", body: $0) }
+        // An automatic remount refused or failed falls back to the dot and the
+        // menu item - except an owner left unmounted, which is never silent.
+        let critical = outcome == .ownerNotRemounted
+        let refusal = StatusMenuModel.ghostRemountRefusedAlert(ghost, outcome: outcome, offerMountAnyway: false)
+        if let refusal, interactive || critical {
+            presentAlert(refusal, style: critical ? .critical : .warning)
+        }
+        diskWatcher?.poke()
+    }
+
+    /// Runs a modal alert and returns the index of the button chosen.
+    @discardableResult
+    private func presentAlert(_ text: AlertText, style: NSAlert.Style = .informational) -> Int {
+        // A menu bar app is never frontmost; without activating, the alert
+        // opens behind whatever the user is working in.
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.alertStyle = style
+        alert.messageText = text.message
+        alert.informativeText = text.informative
+        for button in text.buttons {
+            alert.addButton(withTitle: button)
+        }
+        return alert.runModal().rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+    }
+
+    /// Off by default: remounting takes a card offline for a moment, which an
+    /// offload app may not expect.
+    private var remountAfterRenameEnabled: Bool {
+        UserDefaults.standard.bool(forKey: remountAfterRenameDefaultsKey)
+    }
+
+    @objc private func toggleRemountAfterRename(_ sender: NSMenuItem) {
+        let enabled = !remountAfterRenameEnabled
+        UserDefaults.standard.set(enabled, forKey: remountAfterRenameDefaultsKey)
+        logEvent("remount cards automatically after renaming: \(enabled ? "on" : "off")")
+        // Turning it on should act on a ghost that is already there.
+        if enabled {
+            autoRemountTried.removeAll()
+            diskWatcher?.poke()
+        }
+        sender.state = enabled ? .on : .off
+    }
+}
+
 // MARK: - Menu entry rendering
 
 extension StatusItemController {
@@ -470,11 +718,16 @@ extension StatusItemController {
             return item
         case .mount(let title):
             return actionItem(title: title, action: #selector(mountClicked))
+        case .remountGhost(let title, let ownerDevice):
+            let item = actionItem(title: title, action: #selector(remountGhostClicked))
+            item.representedObject = ownerDevice
+            return item
         case .checkForUpdates(let title):
             return actionItem(title: title, action: #selector(checkForUpdatesClicked))
         case .updateAvailable(let title):
             return actionItem(title: title, action: #selector(downloadLatestInstaller))
-        case .moreOptions(let showStartAtLogin, let startAtLoginEnabled, let automaticUpdatesEnabled):
+        case .moreOptions(
+            let showStartAtLogin, let startAtLoginEnabled, let automaticUpdatesEnabled, let remountAfterRenameEnabled):
             let item = NSMenuItem(title: "Settings", action: nil, keyEquivalent: "")
             let submenu = NSMenu()
             if showStartAtLogin {
@@ -486,6 +739,10 @@ extension StatusItemController {
                 title: "Automatically Check for Updates", action: #selector(toggleAutomaticUpdates))
             auto.state = automaticUpdatesEnabled ? .on : .off
             submenu.addItem(auto)
+            let remount = actionItem(
+                title: "Remount Cards Automatically After Renaming", action: #selector(toggleRemountAfterRename))
+            remount.state = remountAfterRenameEnabled ? .on : .off
+            submenu.addItem(remount)
             item.submenu = submenu
             return item
         case .saveReport(let title):

@@ -72,13 +72,18 @@ public enum JSONValue: Codable, Sendable {
 /// marker or malformed output - which is exactly the case where seeing the raw
 /// bytes is what you want.
 func plistAsJSON(_ text: String) -> JSONValue {
+    plistAsJSON(data: Data(text.utf8)) ?? .string(text)
+}
+
+/// Native JSON for plist bytes (XML or binary), nil when they do not parse.
+func plistAsJSON(data: Data) -> JSONValue? {
     guard
-        let object = try? PropertyListSerialization.propertyList(from: Data(text.utf8), format: nil),
+        let object = try? PropertyListSerialization.propertyList(from: data, format: nil),
         JSONSerialization.isValidJSONObject(object),
         let data = try? JSONSerialization.data(withJSONObject: object),
         let value = try? JSONDecoder().decode(JSONValue.self, from: data)
     else {
-        return .string(text)
+        return nil
     }
     return value
 }
@@ -119,6 +124,17 @@ public struct DiagnosticReport: Codable, Sendable {
         public var mountPoint: String
     }
 
+    /// fskitd's persisted mount table.
+    public struct FSKitState: Codable, Sendable {
+        /// `settings.plist` parsed to native JSON, keys intact; nil when the
+        /// file is absent (no FSKit volume mounted) or unreadable.
+        public var settings: JSONValue?
+        /// Paths fskitd reserves that are not mount points: same-name cards
+        /// assigned one of these are refused.
+        public var ghostMountPoints: [String] = []
+        public var error: String?
+    }
+
     public struct DiskInfo: Codable, Sendable {
         public var device: String
         /// `diskutil info -plist` parsed to native JSON, or an `unavailable:`
@@ -143,6 +159,7 @@ public struct DiagnosticReport: Codable, Sendable {
     /// string when it could not be read.
     public var diskutilList: JSONValue
     public var diskInfo: [DiskInfo]
+    public var fskit: FSKitState
 
     /// Pretty-printed, stable-key JSON - the form written to disk and emailed.
     public func jsonString() -> String {
@@ -178,10 +195,16 @@ public func lifsaverReportMailtoURL(reportFilename: String) -> URL? {
 public struct DiagnosticsReporter: Sendable {
     private let runner: any ProcessRunning
     private let mountTable: any MountTableReading
+    private let fskitSettings: any FSKitSettingsReading
 
-    public init(runner: any ProcessRunning, mountTable: any MountTableReading = KernelMountTable()) {
+    public init(
+        runner: any ProcessRunning,
+        mountTable: any MountTableReading = KernelMountTable(),
+        fskitSettings: any FSKitSettingsReading = LivefsdSettingsFile()
+    ) {
         self.runner = runner
         self.mountTable = mountTable
+        self.fskitSettings = fskitSettings
     }
 
     /// "lifsaver-report-20260717-1432.json" - sortable, filesystem-safe.
@@ -215,7 +238,8 @@ public struct DiagnosticsReporter: Sendable {
             mountTableError: mountError,
             fsckProcesses: await fsckDump(),
             diskutilList: plistAsJSON(listing),
-            diskInfo: await diskInfoDump(fromListing: listing)
+            diskInfo: await diskInfoDump(fromListing: listing),
+            fskit: fskitDump()
         )
     }
 
@@ -225,7 +249,7 @@ public struct DiagnosticsReporter: Sendable {
             version: lifsaverVersion,
             macOS: ProcessInfo.processInfo.operatingSystemVersionString,
             architecture: buildArchitecture,
-            privacyNote: "Contains disk layout, volume names, and mount paths - "
+            privacyNote: "Contains disk layout, volume names and UUIDs, and mount paths - "
                 + "no file contents. Review it before sharing."
         )
     }
@@ -238,7 +262,8 @@ public struct DiagnosticsReporter: Sendable {
             out: { line in captured.withLock { $0.append(line) } },
             err: { line in captured.withLock { $0.append(line) } }
         )
-        let scanner = DiskScanner(runner: runner, mountTable: mountTable, console: console, verbose: true)
+        let scanner = DiskScanner(
+            runner: runner, mountTable: mountTable, fskitSettings: fskitSettings, console: console, verbose: true)
 
         var targets: [DiagnosticReport.Target] = []
         var scanError: String?
@@ -267,6 +292,20 @@ public struct DiagnosticsReporter: Sendable {
         } catch {
             return ([], "unavailable: \(error)")
         }
+    }
+
+    /// The raw settings file plus the ghost paths derived from it.
+    private func fskitDump() -> DiagnosticReport.FSKitState {
+        var state = DiagnosticReport.FSKitState()
+        do {
+            guard let data = try fskitSettings.settingsData() else { return state }
+            state.settings = plistAsJSON(data: data)
+            let records = try FSKitMountRecord.parse(data)
+            state.ghostMountPoints = ghostRecords(records, mountTable: try mountTable.entries()).map(\.mountedOn)
+        } catch {
+            state.error = "unavailable: \(error)"
+        }
+        return state
     }
 
     private func fsckDump() async -> [String] {

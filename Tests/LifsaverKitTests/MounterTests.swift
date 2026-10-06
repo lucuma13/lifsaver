@@ -35,7 +35,7 @@ func makeMounter(
     allowRawFallback: Bool = true
 ) -> Mounter {
     Mounter(
-        scanner: DiskScanner(runner: runner, mountTable: mountTable, console: console, verbose: verbose),
+        scanner: makeScanner(runner: runner, mountTable: mountTable, console: console, verbose: verbose),
         fileOps: fileOps,
         allowRawFallback: allowRawFallback
     )

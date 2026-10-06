@@ -17,6 +17,7 @@ public enum EscalatedMountHelper {
     public static func run(
         runner: any ProcessRunning = DefaultProcessRunner(),
         mountTable: any MountTableReading = KernelMountTable(),
+        fskitSettings: any FSKitSettingsReading = LivefsdSettingsFile(),
         fileOps: any FileOperating = DefaultFileOperations(),
         console: Console = Console(out: Console.standard.err, err: Console.standard.err),
         emit: (String) -> Void = { print($0) }
@@ -25,7 +26,8 @@ public enum EscalatedMountHelper {
         let console = log.console(alsoTo: console)
         // Verbose: skip reasons only ever land in the report log, and "why was
         // my card skipped as root" is exactly what a mount bug report turns on.
-        let scanner = DiskScanner(runner: runner, mountTable: mountTable, console: console, verbose: true)
+        let scanner = DiskScanner(
+            runner: runner, mountTable: mountTable, fskitSettings: fskitSettings, console: console, verbose: true)
 
         let targets: [String]
         do {

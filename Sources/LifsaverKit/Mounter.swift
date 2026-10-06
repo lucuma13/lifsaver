@@ -108,22 +108,32 @@ public struct Mounter: Sendable {
     /// binary's zero exit stands - an unreadable table must not turn a
     /// successful mount into a spurious failure (and, one level up, into an
     /// unwarranted admin password prompt).
+    ///
+    /// `diskutil mount` is skipped when fskitd still holds the path
+    /// diskarbitrationd would pick.
     func attemptMounts(_ devId: String, fsType: String) async -> Bool {
-        if verbose {
-            console.out("  Attempting diskutil mount...")
-        }
-        if await diskutilMount(devId), scanner.isCurrentlyMounted(devId) != false {
+        if let (label, ghost) = await scanner.ghostRecord(blocking: devId) {
+            let owner = ghost.displayName.isEmpty ? "a volume that is no longer mounted" : "\"\(ghost.displayName)\""
+            console.out(
+                "  Skipping diskutil mount for /dev/\(devId) (\"\(label)\") - it would be refused: "
+                    + "\(ghost.mountedOn) is held by \(owner).")
+        } else {
             if verbose {
-                let location = scanner.mountPoint(of: devId)
-                console.out("  SUCCESS via diskutil → \(location.isEmpty ? "(see /Volumes)" : location)")
+                console.out("  Attempting diskutil mount...")
             }
-            return true
+            if await diskutilMount(devId), scanner.isCurrentlyMounted(devId) != false {
+                if verbose {
+                    let location = scanner.mountPoint(of: devId)
+                    console.out("  SUCCESS via diskutil → \(location.isEmpty ? "(see /Volumes)" : location)")
+                }
+                return true
+            }
         }
 
         guard allowRawFallback else { return false }
 
         if verbose {
-            console.out("  diskutil mount failed; falling back to raw mount binaries...")
+            console.out("  falling back to raw mount binaries...")
         }
         if await rawMount(devId, fsType: fsType) {
             if scanner.isCurrentlyMounted(devId) != false {

@@ -10,9 +10,13 @@
 
 ### 📖 Background
 
-On macOS, external cards mount through the LIFS, the kernel bridge for Apple's LiveFS and FSKit layer. When two cards carry the same label (e.g. factory default `Untitled`) macOS is supposed to disambiguate them with a numeric suffix (e.g. `/Volumes/Untitled 1`). In practice, on the LIFS path this disambiguation often fails: `diskarbitrationd` probes the volume, begins the mount, then aborts with `unable to mount … (status code 0x00000204)`. The card gets a device node but never finishes mounting – no error dialog, it just doesn't appear in Finder.
+On macOS, FAT and exFAT cards mount through FSKit and LIFS, the kernel bridge for Apple's LiveFS layer: `diskarbitrationd` picks a mount point (`/Volumes/Untitled`, then `/Volumes/Untitled 1`, …) and hands the mount to `fskitd`. `fskitd` keeps its own table of mounted volumes and refuses any mount whose path is already in that table. When it does, `diskarbitrationd` logs `unable to mount … (status code 0x00000204)` (Cocoa error 516, "a file with the same name already exists") and gives up. The card gets a device node but never finishes mounting – no error dialog, it just doesn't appear in Finder.
 
-`lifsaver` watches for exactly this: a card that appears but stalls before mounting. If macOS is mid consistency-check (`fsck`) it holds off rather than race the repair; otherwise, it tries `diskutil mount` and then the raw `/sbin/mount_exfat` and `/sbin/mount_msdos` binaries (this requires admin privileges).
+The trouble is that `fskitd`'s table can fall out of step with reality. The confirmed trigger is renaming a mounted card in Finder: the card moves from `/Volumes/Untitled` to `/Volumes/A001`, but `fskitd` still records the old path. The next card labelled `Untitled` is offered the now-free `/Volumes/Untitled`, is refused, and so is every later one, until the renamed card is unmounted. Cards that merely share a label mount fine on their own; they only stall once such a stale entry exists.
+
+`lifsaver` watches for exactly this: a card that appears but stalls before mounting. If macOS is mid consistency-check (`fsck`) it holds off rather than race the repair; otherwise, it tries `diskutil mount` and then the raw `/sbin/mount_exfat` and `/sbin/mount_msdos` binaries at a mount point of its own, which sidesteps the stale path (this requires admin privileges).
+
+When a renamed card is behind the stall, `lifsaver` says so and offers to remount that card first: unmounting it makes `fskitd` release the old path, so the stuck card then mounts normally. It never forces the unmount, so a card an offload app is still reading from is left alone. While a renamed card would block the next card with its old label, the menu bar icon shows a notification and the menu offers the remount.
 
 ### 🚀 Installation
 

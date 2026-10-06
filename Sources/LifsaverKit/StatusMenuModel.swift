@@ -27,6 +27,21 @@ public struct StalledWatchState: Sendable {
     public var hasStalled: Bool { !known.isEmpty }
 }
 
+/// What the menu bar icon signals, most urgent first.
+public enum MenuBarIconState: Equatable, Sendable {
+    /// A card stalled: the orange buoy, turned 45°.
+    case stalled
+    /// No card stalled yet, but a ghost would refuse the next one: a
+    /// notification dot.
+    case ghost
+    case normal
+
+    public static func current(hasStalled: Bool, hasBlockingGhost: Bool) -> MenuBarIconState {
+        if hasStalled { return .stalled }
+        return hasBlockingGhost ? .ghost : .normal
+    }
+}
+
 /// Pure presentation logic for the status-bar menu and mount notifications.
 /// The app renders these values into AppKit; keeping the decisions here lets
 /// them be unit tested without a window server.
@@ -55,22 +70,29 @@ public enum StatusMenuModel {
     public enum Entry: Equatable, Sendable {
         case disabled(String)
         case mount(title: String)
+        /// Remount the renamed card owning a blocking ghost.
+        case remountGhost(title: String, ownerDevice: String)
         case separator
         case checkForUpdates(title: String)
         case updateAvailable(title: String)
         /// The "Settings" submenu. `showStartAtLogin` is false on unbundled
         /// dev runs, where SMAppService has no bundle to register.
-        case moreOptions(showStartAtLogin: Bool, startAtLoginEnabled: Bool, automaticUpdatesEnabled: Bool)
+        case moreOptions(
+            showStartAtLogin: Bool, startAtLoginEnabled: Bool, automaticUpdatesEnabled: Bool,
+            remountAfterRenameEnabled: Bool)
         case saveReport(title: String)
         case quit(title: String)
     }
 
+    // swiftlint:disable:next function_parameter_count
     public static func entries(
         state: ScanState,
         newerVersion: String?,
         showLaunchAtLogin: Bool,
         launchAtLoginEnabled: Bool,
-        automaticUpdatesEnabled: Bool
+        automaticUpdatesEnabled: Bool,
+        blockingGhosts: [Ghost],
+        remountAfterRenameEnabled: Bool
     ) -> [Entry] {
         var entries: [Entry] = []
 
@@ -84,6 +106,15 @@ public enum StatusMenuModel {
         case .results(let targets):
             let noun = targets.count == 1 ? "volume" : "volumes"
             entries.append(.mount(title: "Mount \(targets.count) stalled \(noun)"))
+        }
+
+        for ghost in blockingGhosts {
+            if let owner = ghost.ownerDevice {
+                entries.append(.remountGhost(title: ghostMenuTitle(ghost), ownerDevice: owner))
+            } else {
+                entries.append(
+                    .disabled("macOS still reserves \(ghost.record.mountedOn) - restart the Mac to free it"))
+            }
         }
 
         entries.append(.separator)
@@ -103,7 +134,8 @@ public enum StatusMenuModel {
             .moreOptions(
                 showStartAtLogin: showLaunchAtLogin,
                 startAtLoginEnabled: launchAtLoginEnabled,
-                automaticUpdatesEnabled: automaticUpdatesEnabled))
+                automaticUpdatesEnabled: automaticUpdatesEnabled,
+                remountAfterRenameEnabled: remountAfterRenameEnabled))
         entries.append(.quit(title: "Quit"))
 
         return entries
@@ -190,6 +222,124 @@ public enum StatusMenuModel {
             return "Nothing mounted - volumes were skipped (already mounted or being checked)."
         case .error:
             return "Mount failed"
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Ghost wording
+// ---------------------------------------------------------------------------
+
+/// What an alert says, decided here so the wording is testable.
+public struct AlertText: Equatable, Sendable {
+    public let message: String
+    public let informative: String
+    /// First is the default button.
+    public let buttons: [String]
+}
+
+extension StatusMenuModel {
+    public static let mountAnywayButton = "Mount Anyway"
+    public static let cancelButton = "Cancel"
+
+    /// The preventive menu item shown while a ghost is blocking.
+    public static func ghostMenuTitle(_ ghost: Ghost) -> String {
+        "\"\(ghost.ownerName)\" is blocking the next \"\(ghost.blockedLabel)\" card - Remount \"\(ghost.ownerName)\""
+    }
+
+    /// Offered before mounting cards a renamed card's ghost refuses. The user
+    /// always chooses: remount (buttons[0]), Mount Anyway, or Cancel.
+    public static func ghostStallAlert(_ ghost: Ghost, label: String, cardCount: Int) -> AlertText {
+        let owner = "\"\(ghost.ownerName)\""
+        let cards = cardCount == 1 ? "the new \"\(label)\" card" : "\(cardCount) new \"\(label)\" cards"
+        return AlertText(
+            message: "\(owner) was renamed while mounted",
+            informative:
+                "macOS is still holding \(ghost.record.mountedOn) for it and refuses \(cards). "
+                + "Remount \(owner) to fix it? (\(owner) is unavailable for a moment; any Finder window "
+                + "showing it will close.)\n\n"
+                + "Mount Anyway mounts at a different path and may ask for your password; the next "
+                + "\"\(label)\" card will stall again.",
+            buttons: [
+                cardCount == 1
+                    ? "Remount \(owner) and Mount \"\(label)\"" : "Remount \(owner) and Mount \(cardCount) Cards",
+                mountAnywayButton,
+                cancelButton,
+            ])
+    }
+
+    /// A ghost nothing mounted owns: remounting cannot help.
+    public static func leakAlert(_ ghost: Ghost, label: String) -> AlertText {
+        AlertText(
+            message: "macOS lost track of a previous card",
+            informative:
+                "It still reserves \(ghost.record.mountedOn), so the \"\(label)\" card is refused. "
+                + "Restart the Mac to clear it, or Mount Anyway (mounts at a different path and may ask "
+                + "for your password).",
+            buttons: [mountAnywayButton, cancelButton])
+    }
+
+    /// The remount was refused or failed before anything changed.
+    /// `offerMountAnyway` is true at stall time, where mounting is the goal.
+    public static func ghostRemountRefusedAlert(
+        _ ghost: Ghost, outcome: GhostRemounter.Outcome, offerMountAnyway: Bool
+    ) -> AlertText? {
+        let owner = "\"\(ghost.ownerName)\""
+        let tail = offerMountAnyway ? " - or Mount Anyway." : "."
+        let buttons = offerMountAnyway ? [mountAnywayButton, cancelButton] : ["OK"]
+        switch outcome {
+        case .ownerBusy(let app):
+            return AlertText(
+                message: "\(owner) is in use by \(app)",
+                informative: "Finish or pause the offload, then try again\(tail)",
+                buttons: buttons)
+        case .ownerUnmountFailed(let reason):
+            return AlertText(
+                message: "Could not unmount \(owner)",
+                informative: "\(reason)\n\nTry again in a moment\(tail)",
+                buttons: buttons)
+        case .ownerNotRemounted:
+            return AlertText(
+                message: "\(owner) was unmounted but could not be remounted",
+                informative: "Mount it from Disk Utility.",
+                buttons: ["OK"])
+        case .remounted:
+            return nil
+        }
+    }
+
+    /// Notification for a remount that went through, or nil when there is
+    /// nothing to announce.
+    public static func ghostRemountNotificationBody(
+        _ ghost: Ghost, outcome: GhostRemounter.Outcome, announceBareRemount: Bool
+    ) -> String? {
+        guard case .remounted(_, let mounted, let failed, _) = outcome else { return nil }
+        let owner = "Remounted \"\(ghost.ownerName)\""
+        if !failed.isEmpty {
+            let noun = failed.count == 1 ? "card" : "cards"
+            return "\(owner), but \(failed.count) \(noun) still did not mount."
+        }
+        if !mounted.isEmpty {
+            let noun = mounted.count == 1 ? "card" : "cards"
+            return "\(owner) and mounted \(mounted.count) \(noun)."
+        }
+        return announceBareRemount ? "\(owner)." : nil
+    }
+
+    /// One line for the diagnostic report's event log.
+    public static func ghostRemountEventLine(_ ghost: Ghost, outcome: GhostRemounter.Outcome) -> String {
+        let subject =
+            "remount of \"\(ghost.ownerName)\" (\(ghost.ownerDevice ?? "no owner")) for \(ghost.record.mountedOn)"
+        switch outcome {
+        case .remounted(let mountPoint, let mounted, let failed, let cleared):
+            return "\(subject): back at \(mountPoint), \(mounted.count) stalled mounted, \(failed.count) failed, "
+                + "ghost \(cleared ? "cleared" : "STILL PRESENT")"
+        case .ownerBusy(let app):
+            return "\(subject): refused, in use by \(app)"
+        case .ownerUnmountFailed(let reason):
+            return "\(subject): unmount failed: \(reason)"
+        case .ownerNotRemounted:
+            return "\(subject): CRITICAL - owner unmounted but not remounted"
         }
     }
 }

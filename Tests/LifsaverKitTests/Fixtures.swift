@@ -68,6 +68,10 @@ final class FakeMountTable: MountTableReading {
         state.withLock { $0.entries.append(MountEntry(device: device, mountPoint: mountPoint)) }
     }
 
+    func remove(device: String) {
+        state.withLock { $0.entries.removeAll { $0.device == device } }
+    }
+
     func entries() throws -> [MountEntry] {
         if let error { throw error }
         return state.withLock {
@@ -78,16 +82,64 @@ final class FakeMountTable: MountTableReading {
 }
 
 // ---------------------------------------------------------------------------
+// Fake fskitd settings
+// ---------------------------------------------------------------------------
+
+/// Stand-in for fskitd's settings.plist: absent by default, so no test ever
+/// reads the live file.
+struct FakeFSKitSettings: FSKitSettingsReading {
+    var data: Data?
+    var error: (any Error & Sendable)?
+
+    init(data: Data? = nil, error: (any Error & Sendable)? = nil) {
+        self.data = data
+        self.error = error
+    }
+
+    /// Settings holding one `mounts` entry per (displayName, mountedOn).
+    init(mounts: [(displayName: String, mountedOn: String)]) {
+        self.init(data: fskitSettingsPlist(mounts: mounts))
+    }
+
+    func settingsData() throws -> Data? {
+        if let error { throw error }
+        return data
+    }
+}
+
+/// Shaped like a live capture (macOS 26.6.2): `volumeName` holds the FSKit
+/// volume UUID, `displayName` the label.
+func fskitSettingsPlist(mounts: [(displayName: String, mountedOn: String)]) -> Data {
+    plistData([
+        "bootUUID": "1D5B3626-8305-4FA6-8FED-845592853F45",
+        "mounts": mounts.enumerated().map { index, mount in
+            [
+                "displayName": mount.displayName,
+                "fp_domainStorage": "8D2DB7E6-878B-3A9A-90DD-732E9385738\(index)",
+                "mountedOn": mount.mountedOn,
+                "mountID": index + 4,
+                "providerName": "com.apple.filesystems.UserFS.FileProvider",
+                "volumeName": "8D2DB7E6-878B-3A9A-90DD-732E9385738\(index)",
+            ] as [String: Any]
+        },
+    ])
+}
+
+// ---------------------------------------------------------------------------
 // Scanner factory
 // ---------------------------------------------------------------------------
 
 func makeScanner(
     runner: FakeProcessRunner = FakeProcessRunner(),
     mountTable: any MountTableReading = FakeMountTable(),
+    fskitSettings: any FSKitSettingsReading = FakeFSKitSettings(),
+    existingPaths: Set<String> = [],
     console: Console = .standard,
     verbose: Bool = false
 ) -> DiskScanner {
-    DiskScanner(runner: runner, mountTable: mountTable, console: console, verbose: verbose)
+    DiskScanner(
+        runner: runner, mountTable: mountTable, fskitSettings: fskitSettings,
+        pathExists: { existingPaths.contains($0) }, console: console, verbose: verbose)
 }
 
 /// Console capturing output for assertions.

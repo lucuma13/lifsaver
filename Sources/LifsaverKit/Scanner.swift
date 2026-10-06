@@ -57,17 +57,26 @@ public struct DiskUtilError: Error, CustomStringConvertible {
 public struct DiskScanner: Sendable {
     public let runner: any ProcessRunning
     public let mountTable: any MountTableReading
+    public let fskitSettings: any FSKitSettingsReading
+    /// Whether a path exists - diskarbitrationd skips mount paths whose folder
+    /// already exists, so predicting its choice needs this. A seam so tests
+    /// never look at the real /Volumes.
+    public let pathExists: @Sendable (String) -> Bool
     public let console: Console
     public let verbose: Bool
 
     public init(
         runner: any ProcessRunning,
         mountTable: any MountTableReading = KernelMountTable(),
+        fskitSettings: any FSKitSettingsReading = LivefsdSettingsFile(),
+        pathExists: @escaping @Sendable (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
         console: Console,
         verbose: Bool = false
     ) {
         self.runner = runner
         self.mountTable = mountTable
+        self.fskitSettings = fskitSettings
+        self.pathExists = pathExists
         self.console = console
         self.verbose = verbose
     }
@@ -101,6 +110,16 @@ public struct DiskScanner: Sendable {
         let devPath = "/dev/\(devId)"
         let entries = (try? mountTable.entries()) ?? []
         return entries.first { $0.device == devPath }?.mountPoint ?? ""
+    }
+
+    /// fskitd records whose path is no longer a mount point - the paths macOS
+    /// will refuse same-name cards on.
+    public func ghostFSKitMounts() -> [FSKitMountRecord] {
+        guard
+            let records = try? fskitSettings.records(), !records.isEmpty,
+            let entries = try? mountTable.entries()
+        else { return [] }
+        return ghostRecords(records, mountTable: entries)
     }
 
     // --- process probes ------------------------------------------------------
@@ -156,7 +175,7 @@ public struct DiskScanner: Sendable {
 
     /// One `diskutil info -plist` fetch-and-parse, shared by every per-device
     /// query so timeout and error semantics can only ever change in one place.
-    private func diskInfo(_ devId: String) async -> [String: Any]? {
+    func diskInfo(_ devId: String) async -> [String: Any]? {
         guard
             let result = try? await runner.runChecked("diskutil", ["info", "-plist", devId], timeout: queryTimeout),
             let plist = try? PropertyListSerialization.propertyList(from: result.stdout, format: nil),
@@ -320,6 +339,21 @@ public struct DiskScanner: Sendable {
             // a stalled target.
             throw DiskUtilError(message: "Failed to read mount table: \(error)")
         }
-        return await filterTargetPartitions(data, activeMounts: mounts)
+        let targets = await filterTargetPartitions(data, activeMounts: mounts)
+        if !targets.isEmpty {
+            reportGhostFSKitMounts()
+        }
+        return targets
+    }
+
+    /// Name the likely cause of a stall: a path fskitd still reserves for a
+    /// volume that was renamed.
+    private func reportGhostFSKitMounts() {
+        for ghost in ghostFSKitMounts() {
+            let name = ghost.displayName.isEmpty ? "a volume" : "\"\(ghost.displayName)\""
+            console.out(
+                "  fskitd still reserves \(ghost.mountedOn) for \(name), which is not mounted there - "
+                    + "macOS refuses cards it would mount at that path (0x204) until that volume is unmounted.")
+        }
     }
 }
