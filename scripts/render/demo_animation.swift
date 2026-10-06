@@ -2,7 +2,7 @@ import AppKit
 
 // Render the demo animation for README
 //
-// Usage: swift demo_animation.swift   (requires ffmpeg: brew install ffmpeg)
+// Usage: swift demo_animation.swift   (requires ffmpeg and img2webp: brew install ffmpeg webp)
 
 // MARK: - Config
 
@@ -10,9 +10,9 @@ let projectRoot =
     URL(fileURLWithPath: #filePath)
     .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
 let resourcesDir = projectRoot.appendingPathComponent("scripts/release/app-resources").path
-let outputGif = projectRoot.appendingPathComponent("docs/images/lifsaver_demo_animation.gif").path
+let outputPath = projectRoot.appendingPathComponent("docs/images/lifsaver_demo_animation.webp").path
 
-// Scratch dir for the intermediate PNG frames + ffmpeg concat manifest.
+// Scratch dir for the intermediate PNG frames.
 let outputDir = NSTemporaryDirectory() + "lifsaver-demo-\(ProcessInfo.processInfo.processIdentifier)"
 do {
     try FileManager.default.createDirectory(atPath: outputDir, withIntermediateDirectories: true)
@@ -34,6 +34,10 @@ func color(hex: UInt32, alpha: CGFloat = 1) -> NSColor {
         alpha: alpha)
 }
 
+// macOS light appearance
+let barForeground = color(hex: 0x000000)
+let primaryText = color(hex: 0x000000, alpha: 0.85)
+
 func loadImage(_ path: String) -> NSImage {
     guard let image = NSImage(contentsOfFile: path) else {
         fatalError("missing resource: \(path)")
@@ -45,10 +49,10 @@ let templateIcon = loadImage("\(resourcesDir)/MenuBarIcon@3x.png")
 let alertIcon = loadImage("\(resourcesDir)/MenuBarIconAlert@3x.png")
 let appIcon = loadImage("\(resourcesDir)/AppIcon.icns")
 
-func whiteTinted(_ image: NSImage, size: NSSize) -> NSImage {
+func tinted(_ image: NSImage, size: NSSize, color tint: NSColor) -> NSImage {
     let result = NSImage(size: size)
     result.lockFocus()
-    NSColor.white.set()
+    tint.set()
     NSRect(origin: .zero, size: size).fill()
     image.draw(in: NSRect(origin: .zero, size: size), from: .zero, operation: .destinationIn, fraction: 1)
     result.unlockFocus()
@@ -57,10 +61,10 @@ func whiteTinted(_ image: NSImage, size: NSSize) -> NSImage {
 
 // MARK: - Frame model
 
-enum IconState { case white, orange }
+enum IconState { case normal, orange }
 
 struct Frame {
-    var icon: IconState = .white
+    var icon: IconState = .normal
     var bannerTop: CGFloat?  // top offset of the banner; nil = hidden
     var bannerAlpha: CGFloat = 1
     var menuOpen = false
@@ -95,13 +99,13 @@ func symbolImage(name: String, pointSize: CGFloat) -> NSImage? {
     return base.withSymbolConfiguration(config)
 }
 
-func drawSymbolWhite(name: String, centerX: CGFloat, pointSize: CGFloat) {
+func drawSymbol(name: String, centerX: CGFloat, pointSize: CGFloat) {
     guard let image = symbolImage(name: name, pointSize: pointSize) else { return }
-    let tinted = whiteTinted(image, size: image.size)
+    let tintedImage = tinted(image, size: image.size, color: barForeground)
     let rect = NSRect(
         x: centerX - image.size.width / 2, y: canvasHeight - menuBarHeight / 2 - image.size.height / 2,
         width: image.size.width, height: image.size.height)
-    tinted.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 0.92)
+    tintedImage.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 0.85)
 }
 
 // MARK: - Layout constants
@@ -161,14 +165,19 @@ func drawCursor(at origin: NSPoint) {
     }
     path.close()
     path.lineJoinStyle = .round
-    NSColor.black.withAlphaComponent(0.35).setStroke()
-    path.lineWidth = 4
+    // macOS arrow: black fill, white outline, soft drop shadow
+    NSGraphicsContext.saveGraphicsState()
+    let shadow = NSShadow()
+    shadow.shadowColor = color(hex: 0, alpha: 0.35)
+    shadow.shadowBlurRadius = 2
+    shadow.shadowOffset = NSSize(width: 0, height: -1)
+    shadow.set()
+    NSColor.white.setStroke()
+    path.lineWidth = 2.2
     path.stroke()
-    NSColor.white.setFill()
+    NSGraphicsContext.restoreGraphicsState()
+    NSColor.black.setFill()
     path.fill()
-    NSColor.black.setStroke()
-    path.lineWidth = 1
-    path.stroke()
 }
 
 // MARK: - Frame sections
@@ -176,37 +185,38 @@ func drawCursor(at origin: NSPoint) {
 func drawBackground() {
     guard
         let wallpaper = NSGradient(
-            colors: [color(hex: 0x3a2f60), color(hex: 0x233149)], atLocations: [0, 1], colorSpace: .sRGB)
+            colors: [color(hex: 0xd9e3f5), color(hex: 0xb9cbe6)], atLocations: [0, 1], colorSpace: .sRGB)
     else { fatalError("gradient init failed") }
     wallpaper.draw(in: NSRect(x: 0, y: 0, width: canvasWidth, height: canvasHeight), angle: -78)
 
-    // translucent dark menu bar with a faint hairline underneath
-    color(hex: 0x000000, alpha: 0.34).setFill()
+    // translucent light menu bar with a faint hairline underneath
+    color(hex: 0xffffff, alpha: 0.55).setFill()
     NSRect(x: 0, y: canvasHeight - menuBarHeight, width: canvasWidth, height: menuBarHeight).fill()
-    color(hex: 0xffffff, alpha: 0.08).setFill()
+    color(hex: 0x000000, alpha: 0.06).setFill()
     NSRect(x: 0, y: canvasHeight - menuBarHeight - 0.5, width: canvasWidth, height: 0.5).fill()
 
     drawText(
-        clockText, font: barFont, color: color(hex: 0xffffff, alpha: 0.92),
+        clockText, font: barFont, color: primaryText,
         leftX: clockLeftX, topY: (menuBarHeight - barFont.capHeight) / 2 - 2)
-    drawSymbolWhite(name: "battery.100", centerX: batteryCenterX, pointSize: 13)
-    drawSymbolWhite(name: "wifi", centerX: wifiCenterX, pointSize: 11)
+    drawSymbol(name: "battery.100", centerX: batteryCenterX, pointSize: 13)
+    drawSymbol(name: "wifi", centerX: wifiCenterX, pointSize: 11)
 }
 
 func drawStatusIcon(_ frame: Frame) {
     if frame.menuOpen {
-        color(hex: 0xffffff, alpha: 0.16).setFill()
+        color(hex: 0x000000, alpha: 0.1).setFill()
         roundedRect(
             NSRect(x: iconCenterX - 14, y: canvasHeight - menuBarHeight + 2, width: 28, height: menuBarHeight - 4),
             radius: 5
         ).fill()
     }
     let image =
-        frame.icon == .white ? whiteTinted(templateIcon, size: NSSize(width: iconSize, height: iconSize)) : alertIcon
+        frame.icon == .normal
+        ? tinted(templateIcon, size: NSSize(width: iconSize, height: iconSize), color: barForeground) : alertIcon
     let rect = NSRect(
         x: iconCenterX - iconSize / 2, y: canvasHeight - menuBarHeight / 2 - iconSize / 2,
         width: iconSize, height: iconSize)
-    image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: frame.icon == .white ? 0.95 : 1)
+    image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: frame.icon == .normal ? 0.85 : 1)
 }
 
 func drawBanner(_ frame: Frame) {
@@ -218,15 +228,15 @@ func drawBanner(_ frame: Frame) {
 
     NSGraphicsContext.saveGraphicsState()
     let shadow = NSShadow()
-    shadow.shadowColor = color(hex: 0, alpha: 0.45 * alpha)
+    shadow.shadowColor = color(hex: 0, alpha: 0.18 * alpha)
     shadow.shadowBlurRadius = 22
     shadow.shadowOffset = NSSize(width: 0, height: -6)
     shadow.set()
-    color(hex: 0x1c1c1e, alpha: 0.96 * alpha).setFill()
+    color(hex: 0xf5f5f7, alpha: 0.96 * alpha).setFill()
     roundedRect(rect, radius: 16).fill()
     NSGraphicsContext.restoreGraphicsState()
 
-    color(hex: 0xffffff, alpha: 0.09 * alpha).setStroke()
+    color(hex: 0x000000, alpha: 0.08 * alpha).setStroke()
     let border = roundedRect(rect, radius: 16)
     border.lineWidth = 0.75
     border.stroke()
@@ -238,15 +248,15 @@ func drawBanner(_ frame: Frame) {
     let textX = bannerX + 14 + appIconSize + 12
     drawText(
         "lifsaver", font: NSFont.systemFont(ofSize: 13.5, weight: .semibold),
-        color: color(hex: 0xffffff, alpha: 0.96 * alpha), leftX: textX, topY: bannerTop + 14)
+        color: color(hex: 0x000000, alpha: 0.88 * alpha), leftX: textX, topY: bannerTop + 14)
     let nowFont = NSFont.systemFont(ofSize: 12)
     drawText(
-        "now", font: nowFont, color: color(hex: 0xffffff, alpha: 0.5 * alpha),
+        "now", font: nowFont, color: color(hex: 0x000000, alpha: 0.45 * alpha),
         leftX: canvasWidth - 16 - 16 - textWidth("now", font: nowFont), topY: bannerTop + 15)
     // Keep in sync with StatusMenuModel.stalledNotificationBody.
     let body = NSAttributedString(
         string: "2 stalled volumes detected",
-        attributes: [.font: NSFont.systemFont(ofSize: 13), .foregroundColor: color(hex: 0xffffff, alpha: 0.82 * alpha)])
+        attributes: [.font: NSFont.systemFont(ofSize: 13), .foregroundColor: color(hex: 0x000000, alpha: 0.75 * alpha)])
     body.draw(in: topRect(leftX: textX, topY: bannerTop + 33, width: bannerWidth - (textX - bannerX) - 16, height: 40))
 }
 
@@ -265,7 +275,7 @@ func drawSubmenuArrow(centerY: CGFloat) {
     path.lineWidth = 1.5
     path.lineCapStyle = .round
     path.lineJoinStyle = .round
-    color(hex: 0xffffff, alpha: 0.9).setStroke()
+    primaryText.setStroke()
     path.stroke()
 }
 
@@ -275,15 +285,15 @@ func drawMenu(_ frame: Frame) {
 
     NSGraphicsContext.saveGraphicsState()
     let shadow = NSShadow()
-    shadow.shadowColor = color(hex: 0, alpha: 0.5)
+    shadow.shadowColor = color(hex: 0, alpha: 0.22)
     shadow.shadowBlurRadius = 26
     shadow.shadowOffset = NSSize(width: 0, height: -8)
     shadow.set()
-    color(hex: 0x282828, alpha: 0.97).setFill()
+    color(hex: 0xf2f2f2, alpha: 0.97).setFill()
     roundedRect(menuRect, radius: 9).fill()
     NSGraphicsContext.restoreGraphicsState()
 
-    color(hex: 0xffffff, alpha: 0.10).setStroke()
+    color(hex: 0x000000, alpha: 0.12).setStroke()
     let border = roundedRect(menuRect, radius: 9)
     border.lineWidth = 0.75
     border.stroke()
@@ -291,7 +301,7 @@ func drawMenu(_ frame: Frame) {
     var rowTop = menuTopY + menuInsetY
     for item in menuItems {
         if item == separatorTag {
-            color(hex: 0xffffff, alpha: 0.11).setFill()
+            color(hex: 0x000000, alpha: 0.1).setFill()
             NSRect(
                 x: menuLeftX + 10, y: canvasHeight - (rowTop + separatorHeight / 2) - 0.5,
                 width: menuWidth - 20, height: 1
@@ -307,7 +317,7 @@ func drawMenu(_ frame: Frame) {
                 radius: 5
             ).fill()
         }
-        let textColor = (isMount && frame.highlight) ? NSColor.white : color(hex: 0xffffff, alpha: 0.9)
+        let textColor = (isMount && frame.highlight) ? NSColor.white : primaryText
         let font = isMount ? mountFont : menuFont
         // "Settings" opens a submenu - show the disclosure arrow a real
         // macOS menu draws in the trailing edge. Hand-drawn at a fixed size so
@@ -358,7 +368,7 @@ let cursorOnItem = NSPoint(x: menuLeftX + menuWidth - 60, y: mountRowCenterY - 4
 let cursorAtIcon = NSPoint(x: iconCenterX - 2, y: menuBarHeight + 2)
 
 let frames: [Frame] = [
-    Frame(icon: .white, durationMs: 1000),  // normal
+    Frame(icon: .normal, durationMs: 1000),  // normal
     Frame(icon: .orange, bannerTop: -46, bannerAlpha: 0.35, durationMs: 55),  // banner sliding in
     Frame(icon: .orange, bannerTop: 6, bannerAlpha: 0.8, durationMs: 55),  // banner sliding in
     Frame(icon: .orange, bannerTop: 34, durationMs: 1750),  // alert held
@@ -367,33 +377,21 @@ let frames: [Frame] = [
     Frame(icon: .orange, menuOpen: true, cursor: cursorOnItem, durationMs: 110),  // click flash off
     Frame(icon: .orange, menuOpen: true, highlight: true, cursor: cursorOnItem, durationMs: 150),  // click flash on
     Frame(icon: .orange, cursor: cursorOnItem, durationMs: 230),  // menu closed, mounting
-    Frame(icon: .white, durationMs: 1150),  // back to normal
+    Frame(icon: .normal, durationMs: 1150),  // back to normal
 ]
 
 for (index, frame) in frames.enumerated() {
     renderFrame(frame, to: String(format: "\(outputDir)/f%03d.png", index))
 }
 
-// ffmpeg concat manifest with per-frame durations (the last file is repeated,
-// as the concat demuxer ignores the final entry's duration).
-var concat = ""
-for (index, frame) in frames.enumerated() {
-    concat += "file 'f\(String(format: "%03d", index)).png'\nduration \(Double(frame.durationMs) / 1000)\n"
-}
-concat += "file 'f\(String(format: "%03d", frames.count - 1)).png'\n"
-do {
-    try concat.write(toFile: "\(outputDir)/concat.txt", atomically: true, encoding: .utf8)
-} catch {
-    fatalError("failed to write concat.txt: \(error)")
-}
+// MARK: - Stitch frames into the animation
 
-// MARK: - Stitch frames into the GIF (ffmpeg)
-
-func ffmpeg(_ args: [String]) {
+/// Runs `tool` and stops the render if it is missing or fails.
+func run(_ tool: String, _ args: [String], install: String) {
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-    process.arguments = ["ffmpeg"] + args
-    process.standardOutput = FileHandle.nullDevice  // ffmpeg is chatty; stay quiet
+    process.arguments = [tool] + args
+    process.standardOutput = FileHandle.nullDevice  // both tools are chatty; stay quiet
     process.standardError = FileHandle.nullDevice
     // Detach stdin: with an inherited TTY, ffmpeg enters interactive mode and
     // blocks on a keypress read, hanging the render.
@@ -401,29 +399,25 @@ func ffmpeg(_ args: [String]) {
     do {
         try process.run()
     } catch {
-        fatalError("could not launch ffmpeg: \(error)")
+        fatalError("could not launch \(tool): \(error); install it: \(install)")
     }
     process.waitUntilExit()
     guard process.terminationStatus == 0 else {
-        fatalError("ffmpeg failed (\(process.terminationStatus)); install it: brew install ffmpeg")
+        fatalError("\(tool) failed (\(process.terminationStatus)); install it: \(install)")
     }
 }
 
-let filter = "scale=1600:400:flags=lanczos"  // 2:1 supersample down to the 2x asset size
-let concatFile = "\(outputDir)/concat.txt"
-let palette = "\(outputDir)/palette.png"
-
-// Pass 1: optimised palette from the frames
-ffmpeg([
-    "-y", "-f", "concat", "-safe", "0", "-i", concatFile,
-    "-vf", "\(filter),palettegen=stats_mode=diff", palette,
-])
-// Pass 2: apply the palette and honour the per-frame durations
-ffmpeg([
-    "-y", "-f", "concat", "-safe", "0", "-i", concatFile, "-i", palette,
-    "-lavfi", "\(filter)[x];[x][1:v]paletteuse=dither=sierra2_4a",
-    "-fps_mode", "vfr", "-loop", "0", outputGif,
-])
+let scaled = "scale=1600:400:flags=lanczos"  // 2:1 supersample down to the 2x asset size
+var webpArgs = ["-loop", "0", "-lossy", "-q", "90", "-m", "6"]
+for (index, frame) in frames.enumerated() {
+    let source = String(format: "\(outputDir)/f%03d.png", index)
+    let target = String(format: "\(outputDir)/s%03d.png", index)
+    run("ffmpeg", ["-y", "-i", source, "-vf", scaled, target], install: "brew install ffmpeg")
+    // img2webp takes the delay in milliseconds immediately before its frame, so
+    // the timeline's per-frame durations carry over exactly.
+    webpArgs += ["-d", String(frame.durationMs), target]
+}
+run("img2webp", webpArgs + ["-o", outputPath], install: "brew install webp")
 
 try? FileManager.default.removeItem(atPath: outputDir)
-print("rendered \(outputGif)")
+print("rendered \(outputPath)")

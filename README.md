@@ -6,7 +6,7 @@
 
 `lifsaver` addresses a bug on macOS Live Item File System (LIFS) which prevents multiple cards from mounting when they have the same name (e.g. `Untitled` or `NO NAME`). It watches for cards that appear but never mount, and lets you mount them in two clicks.
 
-<img src="docs/images/lifsaver_demo_animation.gif" width="100%"/>
+<img src="docs/images/lifsaver_demo_animation.webp" width="100%" alt="lifsaver menu bar icon demo"/>
 
 ### 📖 Background
 
