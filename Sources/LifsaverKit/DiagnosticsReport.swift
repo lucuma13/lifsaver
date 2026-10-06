@@ -132,7 +132,20 @@ public struct DiagnosticReport: Codable, Sendable {
         /// Paths fskitd reserves that are not mount points: same-name cards
         /// assigned one of these are refused.
         public var ghostMountPoints: [String] = []
+        /// The same ghosts with the volume each belongs to: after a rename,
+        /// `displayName` is the card's new name.
+        public var ghosts: [GhostEntry] = []
         public var error: String?
+    }
+
+    public struct GhostEntry: Codable, Sendable, Equatable {
+        public var mountedOn: String
+        public var displayName: String
+        public var volumeUUID: String
+        /// The mounted volume that owns the record (the renamed card); nil
+        /// when none does - the record outlived its volume.
+        public var ownerDevice: String?
+        public var ownerMountPoint: String?
     }
 
     public struct DiskInfo: Codable, Sendable {
@@ -160,6 +173,10 @@ public struct DiagnosticReport: Codable, Sendable {
     public var diskutilList: JSONValue
     public var diskInfo: [DiskInfo]
     public var fskit: FSKitState
+    /// fskitd's table as it was the moment each card stalled, before any
+    /// mount attempt changed it, and the system log trail around the stall
+    /// and after the mount.
+    public var debugCaptures: [DebugCapture] = []
 
     /// Pretty-printed, stable-key JSON - the form written to disk and emailed.
     public func jsonString() -> String {
@@ -169,6 +186,32 @@ public struct DiagnosticReport: Codable, Sendable {
             return "{\"error\":\"could not encode diagnostic report\"}"
         }
         return String(decoding: data, as: UTF8.self)
+    }
+}
+
+extension DiagnosticReport.FSKitState {
+    /// One read of fskitd's settings against one kernel mount table snapshot.
+    /// `owners` comes from an earlier owner resolution (`DiskScanner.ghosts`),
+    /// which costs subprocesses; a ghost it does not cover gets no owner.
+    static func snapshot(
+        settings: any FSKitSettingsReading, mountTable: any MountTableReading, owners: [Ghost]
+    ) -> Self {
+        var state = Self()
+        do {
+            guard let data = try settings.settingsData() else { return state }
+            state.settings = plistAsJSON(data: data)
+            let ghosts = ghostRecords(try FSKitMountRecord.parse(data), mountTable: try mountTable.entries())
+            state.ghostMountPoints = ghosts.map(\.mountedOn)
+            state.ghosts = ghosts.map { record in
+                let owner = owners.first { $0.record == record }
+                return DiagnosticReport.GhostEntry(
+                    mountedOn: record.mountedOn, displayName: record.displayName, volumeUUID: record.volumeUUID,
+                    ownerDevice: owner?.ownerDevice, ownerMountPoint: owner?.ownerMountPoint)
+            }
+        } catch {
+            state.error = "unavailable: \(error)"
+        }
+        return state
     }
 }
 
@@ -218,8 +261,10 @@ public struct DiagnosticsReporter: Sendable {
     /// `userNote` is the reporter's own description of what went wrong;
     /// `appEvents` are the app's recent scan/mount outcomes; `liveLog` is the
     /// console output recorded live during those scans and mount attempts.
+    /// `debugCaptures` are what the app captured as cards stalled.
     public func generate(
-        userNote: String = "", appEvents: [String] = [], liveLog: [String] = []
+        userNote: String = "", appEvents: [String] = [], liveLog: [String] = [],
+        debugCaptures: [DebugCapture] = []
     ) async -> DiagnosticReport {
         let note = userNote.trimmingCharacters(in: .whitespacesAndNewlines)
         let (mountEntries, mountError) = mountTableDump()
@@ -229,7 +274,7 @@ public struct DiagnosticsReporter: Sendable {
         let listing = await rawCommand("diskutil", ["list", "-plist"])
 
         return DiagnosticReport(
-            meta: meta(),
+            meta: meta(includesSystemLog: !debugCaptures.isEmpty),
             userNote: note.isEmpty ? nil : note,
             appEvents: appEvents,
             liveLog: liveLog,
@@ -239,17 +284,19 @@ public struct DiagnosticsReporter: Sendable {
             fsckProcesses: await fsckDump(),
             diskutilList: plistAsJSON(listing),
             diskInfo: await diskInfoDump(fromListing: listing),
-            fskit: fskitDump()
+            fskit: await fskitDump(),
+            debugCaptures: debugCaptures
         )
     }
 
-    private func meta() -> DiagnosticReport.Meta {
-        DiagnosticReport.Meta(
+    private func meta(includesSystemLog: Bool) -> DiagnosticReport.Meta {
+        let logs = includesSystemLog ? ", and macOS system log excerpts (disk arbitration, FSKit)" : ""
+        return DiagnosticReport.Meta(
             generated: ISO8601DateFormatter().string(from: Date()),
             version: lifsaverVersion,
             macOS: ProcessInfo.processInfo.operatingSystemVersionString,
             architecture: buildArchitecture,
-            privacyNote: "Contains disk layout, volume names and UUIDs, and mount paths - "
+            privacyNote: "Contains disk layout, volume names and UUIDs, and mount paths\(logs) - "
                 + "no file contents. Review it before sharing."
         )
     }
@@ -294,18 +341,12 @@ public struct DiagnosticsReporter: Sendable {
         }
     }
 
-    /// The raw settings file plus the ghost paths derived from it.
-    private func fskitDump() -> DiagnosticReport.FSKitState {
-        var state = DiagnosticReport.FSKitState()
-        do {
-            guard let data = try fskitSettings.settingsData() else { return state }
-            state.settings = plistAsJSON(data: data)
-            let records = try FSKitMountRecord.parse(data)
-            state.ghostMountPoints = ghostRecords(records, mountTable: try mountTable.entries()).map(\.mountedOn)
-        } catch {
-            state.error = "unavailable: \(error)"
-        }
-        return state
+    /// The raw settings file plus the ghosts derived from it, with owners.
+    private func fskitDump() async -> DiagnosticReport.FSKitState {
+        let scanner = DiskScanner(
+            runner: runner, mountTable: mountTable, fskitSettings: fskitSettings,
+            console: Console(out: { _ in }, err: { _ in }))
+        return .snapshot(settings: fskitSettings, mountTable: mountTable, owners: await scanner.ghosts())
     }
 
     private func fsckDump() async -> [String] {

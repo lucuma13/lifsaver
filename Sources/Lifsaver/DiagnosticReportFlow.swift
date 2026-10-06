@@ -6,7 +6,7 @@ import LifsaverKit
 /// reveal the saved file in Finder.
 @MainActor
 enum DiagnosticReportFlow {
-    static func begin(appEvents: [String], liveLog: [String]) {
+    static func begin(appEvents: [String], liveLog: [String], debugCaptures: [DebugCapture]) {
         // A menu bar app is never frontmost; without activating, the alert
         // and save panel open behind whatever the user is working in.
         NSApp.activate(ignoringOtherApps: true)
@@ -20,7 +20,8 @@ enum DiagnosticReportFlow {
 
         Task {
             let reporter = DiagnosticsReporter(runner: DefaultProcessRunner())
-            let report = await reporter.generate(userNote: note, appEvents: appEvents, liveLog: liveLog)
+            let report = await reporter.generate(
+                userNote: note, appEvents: appEvents, liveLog: liveLog, debugCaptures: debugCaptures)
             do {
                 try report.jsonString().write(to: url, atomically: true, encoding: .utf8)
                 NSWorkspace.shared.activateFileViewerSelecting([url])

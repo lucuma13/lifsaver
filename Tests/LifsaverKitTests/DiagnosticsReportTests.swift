@@ -86,6 +86,39 @@ private struct StubError: Error {}
         #expect(fskit.settings?["bootUUID"]?.stringValue == "1D5B3626-8305-4FA6-8FED-845592853F45")
     }
 
+    @Test func reportGhostsNameTheRenamedOwner() async {
+        let settings = FakeFSKitSettings(mounts: [("A001", "/Volumes/Untitled")])
+        let table = FakeMountTable([MountEntry(device: "/dev/disk6s1", mountPoint: "/Volumes/A001")])
+        let ghost = await reporter(mountTable: table, fskitSettings: settings).generate().fskit.ghosts.first
+        #expect(ghost?.mountedOn == "/Volumes/Untitled")
+        #expect(ghost?.displayName == "A001")
+        #expect(ghost?.ownerDevice == "disk6s1")
+        #expect(ghost?.ownerMountPoint == "/Volumes/A001")
+    }
+
+    @Test func debugCapturesRoundTripThroughJSON() async throws {
+        var capture = DebugCapturer(
+            runner: FakeProcessRunner(), mountTable: FakeMountTable(),
+            fskitSettings: FakeFSKitSettings(mounts: [("C001", "/Volumes/Untitled")])
+        ).snapshot(trigger: .stallDetected, devices: ["disk7s1"], ghosts: [])
+        capture.unifiedLog = ["fskitd: unable to mount (status code 0x00000204)"]
+        let report = await reporter().generate(debugCaptures: [capture])
+        #expect(report.meta.privacyNote.contains("system log"))
+
+        let decoded = try JSONDecoder().decode(DiagnosticReport.self, from: Data(report.jsonString().utf8))
+        #expect(decoded.debugCaptures.count == 1)
+        #expect(decoded.debugCaptures.first?.trigger == .stallDetected)
+        #expect(decoded.debugCaptures.first?.fskit.ghostMountPoints == ["/Volumes/Untitled"])
+        #expect(decoded.debugCaptures.first?.unifiedLog == capture.unifiedLog)
+        #expect(report.jsonString().contains("\"stall-detected\""))
+    }
+
+    @Test func privacyNoteMentionsSystemLogOnlyWhenCaptured() async {
+        let report = await reporter().generate()
+        #expect(!report.meta.privacyNote.contains("system log"))
+        #expect(report.debugCaptures.isEmpty)
+    }
+
     @Test func absentFSKitSettingsMeanNoRecords() async {
         let fskit = await reporter().generate().fskit
         #expect(fskit.settings == nil)

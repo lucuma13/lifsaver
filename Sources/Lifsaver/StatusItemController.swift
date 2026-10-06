@@ -34,6 +34,9 @@ private let installerAssetName = "lifsaver_installer_macos.pkg"
 /// weeks discovering releases, instead of only ever checking at launch.
 private let updateRecheckInterval: TimeInterval = 6 * 60 * 60
 
+/// Debug captures kept for the next report, oldest rolling off.
+private let debugCaptureCapacity = 10
+
 /// User preferences for auto updates, start at login, and remounting renamed cards.
 private let automaticUpdatesDefaultsKey = "AutomaticUpdatesEnabled"
 private let remountAfterRenameDefaultsKey = "RemountAfterRenameEnabled"
@@ -79,8 +82,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var recentEvents: [String] = []
 
     private var blockingGhosts: [Ghost] = []
+    private var latestGhosts: [Ghost] = []
     private var seenGhosts: Set<String> = []
     private var autoRemountTried: Set<String> = []
+
+    private let capturer = DebugCapturer(runner: DefaultProcessRunner())
+    private var debugCaptures: [DebugCapture] = []
+    private var stallCapturedAt: [String: Date] = [:]
 
     private let baseIcon: NSImage?
     private let ghostIcon: NSImage?
@@ -228,6 +236,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             if let ghosts {
                 updateGhosts(ghosts)
             }
+            // Before anything acts on the stall: a mount attempt rewrites
+            // fskitd's table.
+            if !newlyStalled.isEmpty {
+                captureStall(newlyStalled, ghosts: ghosts ?? [])
+            }
+            // A card unplugged without mounting owes no after-mount capture.
+            // Skipped during a mount, whose rescans would drop its own cards.
+            if !mountInProgress {
+                stallCapturedAt = stallCapturedAt.filter { settled.contains($0.key) }
+            }
             refreshIcon()
         }
         // Every open rebuilds anyway; while the menu is closed only the icon
@@ -326,8 +344,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let scanner = self.scanner
         Task { [weak self] in
             guard let self else { return }
-            guard await resolveGhostStalls() == .mountRest else {
+            let resolution = await resolveGhostStalls()
+            guard resolution == .mountRest else {
                 mountInProgress = false
+                if resolution == .handled {
+                    captureAfterMount()
+                }
                 diskWatcher?.poke()
                 return
             }
@@ -358,13 +380,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if let body = StatusMenuModel.notificationBody(for: combined) {
             Notifier.post(title: "lifsaver", body: body)
         }
+        captureAfterMount()
         // Successful mounts announce themselves through DiskArbitration; this
         // covers failures, so the badge and menu still tell the truth.
         diskWatcher?.poke()
     }
 
     @objc private func saveReportClicked() {
-        DiagnosticReportFlow.begin(appEvents: recentEvents, liveLog: liveLog.snapshot())
+        DiagnosticReportFlow.begin(
+            appEvents: recentEvents, liveLog: liveLog.snapshot(), debugCaptures: debugCaptures)
     }
 
     /// Keeps the last few outcomes with timestamps; old entries roll off.
@@ -526,6 +550,7 @@ extension StatusItemController {
             }
         }
         seenGhosts = keys
+        latestGhosts = ghosts
         autoRemountTried.formIntersection(keys)
         blockingGhosts = ghosts.filter(scanner.isBlocking)
 
@@ -702,6 +727,53 @@ extension StatusItemController {
             diskWatcher?.poke()
         }
         sender.state = enabled ? .on : .off
+    }
+}
+
+// MARK: - Debug capture
+
+extension StatusItemController {
+    /// fskitd's table the moment cards stall, then the system log trail,
+    /// gathered off the menu's path.
+    private func captureStall(_ devIds: [String], ghosts: [Ghost]) {
+        let snapshot = capturer.snapshot(trigger: .stallDetected, devices: devIds, ghosts: ghosts)
+        let cards = devIds.joined(separator: ", ")
+        let held = snapshot.fskit.ghostMountPoints
+        logEvent("fskitd snapshot at stall of \(cards): \(held.isEmpty ? "no ghost" : "ghosts \(held)")")
+        let now = Date()
+        for devId in devIds {
+            stallCapturedAt[devId] = now
+        }
+        captureLogs(
+            snapshot, since: diskWatcher?.appeared(for: devIds),
+            daDescriptions: diskWatcher?.descriptions(for: devIds) ?? [:])
+    }
+
+    /// A forced mount's log trail, next to the stall it followed.
+    private func captureAfterMount() {
+        guard !stallCapturedAt.isEmpty else { return }
+        let devIds = stallCapturedAt.keys.sorted()
+        let since = stallCapturedAt.values.min()
+        stallCapturedAt.removeAll()
+        let snapshot = capturer.snapshot(trigger: .afterMount, devices: devIds, ghosts: latestGhosts)
+        captureLogs(snapshot, since: since, daDescriptions: diskWatcher?.descriptions(for: devIds) ?? [:])
+    }
+
+    private func captureLogs(_ snapshot: DebugCapture, since: Date?, daDescriptions: [String: JSONValue]) {
+        let capturer = self.capturer
+        Task { [weak self] in
+            let capture = await capturer.addingLogs(to: snapshot, since: since, daDescriptions: daDescriptions)
+            guard let self else { return }
+            storeCapture(capture)
+            logEvent("debug capture (\(capture.trigger.rawValue)) taken for \(capture.devices.joined(separator: ", "))")
+        }
+    }
+
+    private func storeCapture(_ capture: DebugCapture) {
+        debugCaptures.append(capture)
+        if debugCaptures.count > debugCaptureCapacity {
+            debugCaptures.removeFirst(debugCaptures.count - debugCaptureCapacity)
+        }
     }
 }
 
