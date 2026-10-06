@@ -65,7 +65,7 @@ jobs:
           config_data: "{extends: default, rules: {line-length: {max: 120, level: warning}, comments: {min-spaces-from-content: 1}}}"
       # GitHub workflow schema validation
       - name: Validate GitHub workflow schemas
-        uses: dsanders11/json-schema-validate-action@eddf079f55830cc9a916a3c512ba9086240d2fea # v2.0.0
+        uses: dsanders11/json-schema-validate-action@f04ef3bca791388d2bd9ff3a50b27d1b2572158e # v2.1.0
         with:
           schema: https://json.schemastore.org/github-workflow.json
           files: .github/workflows/**.yml
@@ -93,7 +93,7 @@ jobs:
       - name: Report and export coverage (LCOV)
         run: ./scripts/coverage.sh
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@0b35c9ecc4f0529d0eb674914510c22f85b196b4 # v7.1.0
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           files: coverage.lcov
           fail_ci_if_error: false

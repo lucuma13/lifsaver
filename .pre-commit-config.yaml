@@ -21,7 +21,7 @@ repos:
       - id: check-shebang-scripts-are-executable
   # Spellcheck
   - repo: https://github.com/crate-ci/typos
-    rev: v1.50.2
+    rev: v1.51.0
     hooks:
       - id: typos
         args: [--force-exclude] # Flag only: removed default --write-changes
@@ -41,7 +41,7 @@ repos:
           - "{extends: default, rules: {line-length: {max: 120, level: warning}, comments: {min-spaces-from-content: 1}}}"
   # GitHub workflow schema validation
   - repo: https://github.com/python-jsonschema/check-jsonschema
-    rev: 0.38.0
+    rev: 0.38.2
     hooks:
       - id: check-github-workflows
         args: ["--verbose"]
@@ -86,12 +86,12 @@ repos:
         pass_filenames: false
   # Bash formatter
   - repo: https://github.com/scop/pre-commit-shfmt
-    rev: v3.13.1-1
+    rev: v3.14.1-1
     hooks:
       - id: shfmt
   # Bash linter
   - repo: https://github.com/shellcheck-py/shellcheck-py
-    rev: v0.11.0.1
+    rev: v0.11.0.1-1
     hooks:
       - id: shellcheck
         exclude_types: [bats]
